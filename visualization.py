@@ -117,50 +117,43 @@ def visualize_sample(gt_visual, output_visual, slice_idx=(84, 29, 29)):
 if __name__ == "__main__":
     import numpy as np
     import os
-    import model
+    import vnet
 
     # Set mode for testing
-    os.environ['MODE'] = 'train'
+    os.environ['MODE'] = 'test'
     import config
     from test import load_test_dataset, load_checkpoint
 
-    # ------------- visualize some samples
-    # Initialize model
-    convLSTMmodel = model.__dict__[config.d_arch_name](input_dim=config.input_dim,
-                                                       hidden_dim=config.hidden_dim,
-                                                       new_channel=config.output_dim,
-                                                       new_seq_len=config.output_tl,
-                                                       kernel_size=config.kernel_size,
-                                                       num_layers=config.num_layers,
-                                                       batch_first=True).to(config.device)
-
-    model = convLSTMmodel.to(device=config.device)
-
-    results_dir = config.results_dir
-    fold_number = 5  # Change as needed
-    model_filename = "d_best.pth.tar"
-    model_path = os.path.join(results_dir, f"_fold {fold_number}", model_filename)
-    # Load model checkpoint
-    convLSTM_model = load_checkpoint(model, model_path)
-
-    # Prepare test dataset
-    test_loader = load_test_dataset()
-    for data in test_loader:
-        inputs = data['lr'].to(config.device)
-        gt = data['gt'].to(config.device)
-
-    # Generate output from the model
-    convLSTM_model.eval()
-    with torch.no_grad():
-        output = convLSTM_model(inputs)
-
-    # Visualize the sample
-    visualize_sample(output[:, 0].squeeze(), data['loc_xy'].squeeze(), slice_idx=(128, 8, 8))
-    visualize_sample(output[:, 1].squeeze(), gt[:, 1].squeeze(), slice_idx=(128, 8, 8))
+    # # ------------- visualize some samples
+    # # Initialize model
+    # model = vnet.__dict__[config.d_arch_name]().to(config.device)
+    # model = model.to(device=config.device)
+    #
+    # results_dir = config.results_dir
+    # fold_number = 5  # Change as needed
+    # model_filename = "d_best.pth.tar"
+    # model_path = os.path.join(results_dir, f"_fold {fold_number}", model_filename)
+    # # Load model checkpoint
+    # model = load_checkpoint(model, model_path)
+    #
+    # # Prepare test dataset
+    # test_loader = load_test_dataset()
+    # for data in test_loader:
+    #     inputs = data['lr'].to(config.device)
+    #     gt = data['gt'].to(config.device)
+    #
+    # # Generate output from the model
+    # model.eval()
+    # with torch.no_grad():
+    #     output = model(inputs)
+    #
+    # # Visualize the sample
+    # visualize_sample(output.squeeze(), data['loc_xy'].squeeze(), slice_idx=(160, 8, 8))
+    # visualize_sample(output.squeeze(), gt.squeeze(), slice_idx=(160, 8, 8))
 
     # ------------- visualize the metrics
     # Directory where the results are stored
-    num_folds = 5
+    num_folds = 1
 
     # Initialize lists to store aggregated metrics
     all_train_losses = []
@@ -169,7 +162,7 @@ if __name__ == "__main__":
     all_val_ssim_scores = []
 
     for fold in range(1, num_folds + 1):
-        results_file = os.path.join(results_dir, f'_fold {fold}', 'training_metrics.json')
+        results_file = os.path.join(config.results_dir, f'_fold {fold}', 'training_metrics.json')
         if os.path.exists(results_file):
             metrics = read_metrics(results_file)
             all_train_losses.append(metrics['train_losses'])

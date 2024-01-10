@@ -40,7 +40,7 @@ output_tl = 1  # the depth length
 num_layers = 2
 
 # ------------- choose from models
-d_arch_name = "vnet"
+d_arch_name = "VNet"
 
 # ---------- choose from loss functions
 loss_function = "DiceLoss"  # Options: DiceLoss, myCrossEntropyLoss, MulticlassDiceLoss, etc.
@@ -48,8 +48,12 @@ val_function = "PixelAccuracy"
 
 # Experiment name, easy to save weights and log files
 exp_name = d_arch_name + "_" + loss_function
+# choose exact position or shadow effect, define the dilation
+option_type = 2  # 1 for shadowing and 2 for dilation
+dilation_factors = (20, 1, 1)
+
 # Constructing the path
-results_dir = os.path.join("results", f"{exp_name}_2023-12-18")
+results_dir = os.path.join("results", f"{exp_name}_{option_type}_{dilation_factors[0]}_2024-01-09")
 
 # How many iterations to print the training result
 train_print_frequency = 2
@@ -95,6 +99,7 @@ if mode == "train":
     # Dynamically adjust the learning rate policy
     lr_scheduler_milestones = [int(epochs * 0.125), int(epochs * 0.250), int(epochs * 0.500), int(epochs * 0.750)]
     lr_scheduler_gamma = 0.1
+
 elif mode == "test":
     print("testing mode")
     # Test data address To be modified ...

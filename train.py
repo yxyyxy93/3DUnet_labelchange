@@ -78,7 +78,7 @@ def main():
         # Get current date
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         # Create a experiment results
-        results_dir = os.path.join("./results", f"{config.exp_name}_{current_date}",
+        results_dir = os.path.join("./results", f"{config.exp_name}_{config.option_type}_{config.dilation_factors[0]}_{current_date}",
                                    f"_fold {fold + 1}")
         make_directory(results_dir)
 
@@ -159,7 +159,8 @@ def load_dataset(num_folds=5) -> list:
     # Load the full dataset
     full_dataset = TrainValidImageDataset(image_dir=config.image_dir,
                                           label_dir=config.label_dir,
-                                          mode=config.mode)
+                                          option_type=config.option_type,
+                                          dilation_factors=config.dilation_factors)
 
     dataset_size = len(full_dataset)
     indices = torch.randperm(dataset_size).tolist()
@@ -254,20 +255,16 @@ def train(
         gt = batch_data["gt"].to(device=config.device, non_blocking=True)
         lr = batch_data["lr"].to(device=config.device, non_blocking=True)
         train_model.zero_grad(set_to_none=True)
-
         with amp.autocast():
             output = train_model(lr)
             loss = criterion(output, gt)
             score = val_crite(output, gt)  # Compute
-
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
         ema_model.update_parameters(train_model)
-
         losses.update(loss.item(), lr.size(0))
         scores.update(score.item(), lr.size(0))  # Update  meter
-
         batch_time.update(time.time() - end)
         end = time.time()
 

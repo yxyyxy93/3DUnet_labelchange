@@ -27,21 +27,25 @@ __all__ = [
 class TrainValidImageDataset(Dataset):
     """Define training/valid dataset loading methods.
 
-    Args:
-        image_dir (str): Train/Valid dataset address.
-        label_dir (str): Directory where the corresponding labels are stored.
-        mode (str): Data set loading method, the training data set is for data enhancement, and the verification data set is not for data enhancement.
+    Args: image_dir (str): Train/Valid dataset address. label_dir (str): Directory where the corresponding labels are
+    stored. mode (str): Data set loading method, the training data set is for data enhancement, and the verification
+    data set is not for data enhancement.
     """
 
-    def __init__(self, image_dir: str, label_dir: int, mode: str) -> None:
+    def __init__(self, image_dir: str, label_dir: int, option_type=2, dilation_factors=None) -> None:
         super(TrainValidImageDataset, self).__init__()
+        if dilation_factors is None:
+            dilation_factors = [10, 1, 1]
         self.image_dir = image_dir
         self.label_dir = label_dir
-        self.mode = mode
         # Get all subdirectories in the image directory
         self.subdirs = [d for d in os.listdir(image_dir) if os.path.isdir(os.path.join(image_dir, d))]
         # Create a mapping from dataset files to label files
         self.dataset_label_mapping = self._create_dataset_label_mapping()
+
+        # labels setting
+        self.option_type = option_type
+        self.dilation_factors = dilation_factors
 
     def _create_dataset_label_mapping(self):
         mapping = {}
@@ -66,39 +70,31 @@ class TrainValidImageDataset(Dataset):
         # Use the mapping to get the dataset and label files
         dataset_file = list(self.dataset_label_mapping.keys())[batch_index]
         label_file = self.dataset_label_mapping[dataset_file]
-
         # Load the images
         image_noisy = read_csv_to_3d_array(dataset_file)
         image_origin = read_csv_to_3d_array(label_file)
-
-        # print_statistics(image_origin, "Initial")
-        # Assign 1 where the value is 7, and 0 otherwise in the 'image_origin' array
-        # image_origin = np.where(image_origin == 7, 1, 0)
-        # Step 1: Find the index of the first 7 in the 3rd dimension
-        idx_of_7 = np.argmax(image_origin == 7, axis=2)
-        # Initialize a mask with all zeros
-        image_origin = np.zeros_like(image_origin, dtype=bool)
-        # Step 2: Set the positions greater than the index to True
-        for i in range(image_origin.shape[0]):
-            for j in range(image_origin.shape[1]):
-                image_origin[i, j, idx_of_7[i, j]:] = True
-
-        # factor_ranges = ((0.8, 1.2),
-        #                  (0.9, 1.1),
-        #                  (0.9, 1.1))  # Ranges for the resize factors for each dimension
-        # image_origin, image_noisy = imgproc.resize_and_restore_images(image_origin,
-        #                                                               image_noisy,
-        #                                                               factor_ranges=factor_ranges)
-
         # print_statistics(image_origin, "After Resize and Restore")
-        new_shape = [21, 21, 256]  # smaller size to match both dataset: image_noisy
-        section_shape = [16, 16, 256]  # random select a section
+        new_shape = [21, 21, 320]  # smaller size to match both dataset: image_noisy
+        section_shape = [16, 16, 320]  # random select a section
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
-
-        dilation_factors = (20, 1, 1)  # Example dilation factors
-        image_origin = imgproc.dilate_3d_array(image_origin, dilation_factors)
+        # Option 1: Exact location + dilation
+        if self.option_type == 1:
+            image_origin = np.where(image_origin == 7, 1, 0)
+            image_origin = imgproc.dilate_3d_array(image_origin, self.dilation_factors)
+        # Option 2: Shadow effect
+        elif self.option_type == 2:
+            idx_of_7 = np.argmax(image_origin == 7, axis=0)
+            # Initialize a mask with all zeros
+            image_origin = np.zeros_like(image_origin, dtype=bool)
+            # Step 2: Set the positions greater than the index to True
+            for i in range(image_origin.shape[1]):
+                for j in range(image_origin.shape[2]):
+                    if idx_of_7[i, j] != 0:
+                        image_origin[idx_of_7[i, j]:, i, j] = True
+        else:
+            raise ValueError("Invalid option type specified in config.")
 
         # print_statistics(image_origin, "After Rearranging 3D Array")
         # First Tensor: Location of Class 1 in terms of W and H
@@ -127,13 +123,20 @@ class TestDataset(Dataset):
         label_dir (str): Directory where the corresponding labels are stored.
     """
 
-    def __init__(self, image_dir: str, label_dir: str) -> None:
+    def __init__(self, image_dir: str, label_dir: int, option_type=2, dilation_factors=None) -> None:
         super(TestDataset, self).__init__()
+        if dilation_factors is None:
+            dilation_factors = [10, 1, 1]
         self.image_dir = image_dir
         self.label_dir = label_dir
         # Get all subdirectories in the image directory
         self.subdirs = [d for d in os.listdir(image_dir) if os.path.isdir(os.path.join(image_dir, d))]
+        # Create a mapping from dataset files to label files
         self.dataset_label_mapping = self._create_dataset_label_mapping()
+
+        # labels setting
+        self.option_type = option_type
+        self.dilation_factors = dilation_factors
 
     def _create_dataset_label_mapping(self):
         mapping = {}
@@ -158,36 +161,30 @@ class TestDataset(Dataset):
         image_noisy = read_csv_to_3d_array(dataset_file)
         image_origin = read_csv_to_3d_array(label_file)
 
-        # Assign 1 where the value is 7, and 0 otherwise in the 'image_origin' array
-        # image_origin = np.where(image_origin == 7, 1, 0)
-        # Step 1: Find the index of the first 7 in the 3rd dimension
-        idx_of_7 = np.argmax(image_origin == 7, axis=2)
-        # Initialize a mask with all zeros
-        image_origin = np.zeros_like(image_origin, dtype=bool)
-        # Step 2: Set the positions greater than the index to True
-        for i in range(image_origin.shape[0]):
-            for j in range(image_origin.shape[1]):
-                if idx_of_7[i, j] != 0:
-                    image_origin[i, j, idx_of_7[i, j]:] = True
-
-        # # print_statistics(image_origin, "After Condition Assignment")
-        # factor_ranges = ((0.8, 1.2),
-        #                  (0.9, 1.1),
-        #                  (0.9, 1.1))  # Ranges for the resize factors for each dimension
-        # image_origin, image_noisy = imgproc.resize_and_restore_images(image_origin,
-        #                                                               image_noisy,
-        #                                                               factor_ranges=factor_ranges)
-
+        # print_statistics(image_origin, "After Resize and Restore")
         new_shape = [21, 21, 320]  # smaller size to match both dataset: image_noisy
         section_shape = [16, 16, 320]  # random select a section
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
 
-        # dilation_factors = (20, 1, 1)  # Example dilation factors
-        # image_origin = imgproc.dilate_3d_array(image_origin, dilation_factors)
+        # Option 1: Exact location + dilation
+        if self.option_type == 1:
+            image_origin = np.where(image_origin == 7, 1, 0)
+            image_origin = imgproc.dilate_3d_array(image_origin, self.dilation_factors)
+        # Option 2: Shadow effect
+        elif self.option_type == 2:
+            idx_of_7 = np.argmax(image_origin == 7, axis=0)
+            # Initialize a mask with all zeros
+            image_origin = np.zeros_like(image_origin, dtype=bool)
+            # Step 2: Set the positions greater than the index to True
+            for i in range(image_origin.shape[1]):
+                for j in range(image_origin.shape[2]):
+                    if idx_of_7[i, j] != 0:
+                        image_origin[idx_of_7[i, j]:, i, j] = True
+        else:
+            raise ValueError("Invalid option type specified in config.")
 
-        # print_statistics(image_origin, "After Rearranging 3D Array")
         # First Tensor: Location of Class 1 in terms of W and H
         location_matrix = np.any(image_origin == 1, axis=0)  # Shape: [W, H] for debug
 
@@ -423,7 +420,11 @@ if __name__ == "__main__":
 
     # ------------- visualize some samples
     # Prepare test dataset
-    test_dataset = TestDataset(config.image_dir, config.label_dir)  # Adjust as per your dataset class
+    test_dataset = TrainValidImageDataset(config.image_dir,
+                                          config.label_dir,
+                                          option_type=config.option_type,
+                                          dilation_factors=config.dilation_factors)
+
     test_loader = DataLoader(test_dataset, batch_size=1,
                              shuffle=False)  # Adjust batch_size and other parameters as needed
 
@@ -436,11 +437,5 @@ if __name__ == "__main__":
             continue
         print(input.shape)
         print(gt.shape)
-
-        # Visualize the sample
-        loc_xy = data['loc_xy'].to(config.device)
-        if torch.all(loc_xy.eq(0)):
-            print("Skipping as loc_xy is all zeros")
-            continue
 
         plot_dual_orthoslices(gt.squeeze().numpy(), input.squeeze().numpy(), value=1)
