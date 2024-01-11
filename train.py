@@ -104,7 +104,7 @@ def main():
                                                     epoch,
                                                     scaler,
                                                     writer,
-                                                    val_crite)  # Pass the SSIM model to train
+                                                    val_crite)  # Pass the  model to train
             avg_val_loss, avg_val_score = validate(convLSTM_model,
                                                    val_prefetcher,
                                                    epoch,
@@ -232,12 +232,12 @@ def train(
         train_model: nn.Module,
         ema_model: nn.Module,
         train_prefetcher: CUDAPrefetcher,
-        criterion: nn.MSELoss,
+        criterion: any,
         optimizer: optim.Adam,
         epoch: int,
         scaler: amp.GradScaler,
         writer: SummaryWriter,
-        val_crite: any  # Add the SSIM computation function
+        val_crite: any  # Add the computation function
 ) -> (float, float):  # Change return type to include both loss and SSIM
     batches = len(train_prefetcher)
     batch_time = AverageMeter("Time", ":6.3f")

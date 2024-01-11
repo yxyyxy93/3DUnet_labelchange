@@ -113,7 +113,7 @@ class DiceLoss(nn.Module):
     def __init__(self):
         super(DiceLoss, self).__init__()
 
-    def forward(self, inputs, targets, smooth=1):
+    def forward(self, inputs, targets, smooth=1e4):
         # Apply sigmoid to the inputs
         # inputs = torch.sigmoid(inputs)
 
@@ -177,40 +177,31 @@ class IoU(nn.Module):
 
 
 class MulticlassDiceLoss(nn.Module):
-    def __init__(self, smooth=1e-5, weight=None):
+    def __init__(self):
         super(MulticlassDiceLoss, self).__init__()
-        self.smooth = smooth
-        self.weight = weight
 
-    def forward(self, y_pred, y_true):
-        # y_pred shape: [B, T, C, H, W]
-        # y_true shape: [B, T, H, W]
+    def forward(self, inputs, targets, smooth=1e-4):
+        # Apply softmax to the inputs if not already applied
+        inputs = torch.softmax(inputs, dim=1)
 
-        y_pred = torch.softmax(y_pred, dim=2)  # Apply softmax along the class dimension
-        B, T, C, H, W = y_pred.shape
-
-        # One-hot encode y_true
-        y_true_one_hot = torch.zeros(B, T, C, H, W, device=y_pred.device)
-        y_true_one_hot.scatter_(2, y_true.unsqueeze(2), 1)  # Now y_true_one_hot is [B, T, C, H, W]
-
+        # Initialize the Dice loss
         dice_loss = 0.0
-        for c in range(C):
-            y_true_c = y_true_one_hot[:, :, c, ...]
-            y_pred_c = y_pred[:, :, c, ...]
 
-            intersection = 2.0 * (y_pred_c * y_true_c).sum(dim=[0, 1, 2, 3])
-            union = y_pred_c.sum(dim=[0, 1, 2, 3]) + y_true_c.sum(dim=[0, 1, 2, 3])
+        # Loop over each class
+        for class_index in range(inputs.shape[1]):
+            # Extract class predictions and true values
+            input_flat = inputs[:, class_index, ...].reshape(-1)
+            target_flat = targets[:, class_index, ...].reshape(-1)
+            # Compute the intersection and the Dice coefficient
+            intersection = (input_flat * target_flat).sum()
+            dice_coeff = (2. * intersection + smooth) / (input_flat.sum() + target_flat.sum() + smooth)
+            # Accumulate the loss
+            dice_loss += (1 - dice_coeff)
 
-            dice_c = (intersection + self.smooth) / (union + self.smooth)
+        # Average the loss across all classes
+        dice_loss /= inputs.shape[1]
 
-            if self.weight is not None:
-                dice_c *= self.weight[c]
-            dice_loss += dice_c
-
-        # Average over the classes
-        dice_loss /= C
-
-        return 1 - dice_loss.mean()
+        return dice_loss
 
 
 class myCrossEntropyLoss(nn.Module):

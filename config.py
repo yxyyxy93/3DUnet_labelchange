@@ -49,11 +49,11 @@ val_function = "PixelAccuracy"
 # Experiment name, easy to save weights and log files
 exp_name = d_arch_name + "_" + loss_function
 # choose exact position or shadow effect, define the dilation
-option_type = 2  # 1 for shadowing and 2 for dilation
-dilation_factors = (20, 1, 1)
+option_type = 1  # 2 for shadowing and 1 for dilation
+dilation_factors = (3, 1, 1)
 
 # Constructing the path
-results_dir = os.path.join("results", f"{exp_name}_{option_type}_{dilation_factors[0]}_2024-01-09")
+results_dir = os.path.join("results", f"{exp_name}_{option_type}_{dilation_factors[0]}_2024-01-11")
 
 # How many iterations to print the training result
 train_print_frequency = 2

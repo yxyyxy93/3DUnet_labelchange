@@ -123,33 +123,33 @@ if __name__ == "__main__":
     os.environ['MODE'] = 'test'
     import config
     from test import load_test_dataset, load_checkpoint
+    from dataset import plot_dual_orthoslices
 
-    # # ------------- visualize some samples
-    # # Initialize model
-    # model = vnet.__dict__[config.d_arch_name]().to(config.device)
-    # model = model.to(device=config.device)
-    #
-    # results_dir = config.results_dir
-    # fold_number = 5  # Change as needed
-    # model_filename = "d_best.pth.tar"
-    # model_path = os.path.join(results_dir, f"_fold {fold_number}", model_filename)
-    # # Load model checkpoint
-    # model = load_checkpoint(model, model_path)
-    #
-    # # Prepare test dataset
-    # test_loader = load_test_dataset()
-    # for data in test_loader:
-    #     inputs = data['lr'].to(config.device)
-    #     gt = data['gt'].to(config.device)
-    #
-    # # Generate output from the model
-    # model.eval()
-    # with torch.no_grad():
-    #     output = model(inputs)
-    #
-    # # Visualize the sample
-    # visualize_sample(output.squeeze(), data['loc_xy'].squeeze(), slice_idx=(160, 8, 8))
-    # visualize_sample(output.squeeze(), gt.squeeze(), slice_idx=(160, 8, 8))
+    # ------------- visualize some samples
+    # Initialize model
+    model = vnet.__dict__[config.d_arch_name]().to(config.device)
+    model = model.to(device=config.device)
+
+    results_dir = config.results_dir
+    fold_number = 1  # Change as needed
+    model_filename = "d_best.pth.tar"
+    model_path = os.path.join(results_dir, f"_fold {fold_number}", model_filename)
+    # Load model checkpoint
+    model = load_checkpoint(model, model_path)
+
+    # Prepare test dataset
+    test_loader = load_test_dataset()
+    for data in test_loader:
+        inputs = data['lr'].to(config.device)
+        gt = data['gt'].to(config.device)
+
+        # Generate output from the model
+        model.eval()
+        with torch.no_grad():
+            output = model(inputs)
+
+        # Visualize the sample
+        plot_dual_orthoslices(gt.squeeze().numpy(), output.squeeze().numpy(), value=1)
 
     # ------------- visualize the metrics
     # Directory where the results are stored

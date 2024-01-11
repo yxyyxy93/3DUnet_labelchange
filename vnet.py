@@ -213,6 +213,9 @@ if __name__ == '__main__':
         min_prob, max_prob = output.min(), output.max()
         print("Minimum Probability in Model Output:", min_prob.item())
         print("Maximum Probability in Model Output:", max_prob.item())
+        print("Minimum Probability in gt:", gt.min().item())
+        print("Maximum Probability in gt:", gt.max().item())
+
         print(output.shape)
         print(gt.shape)
 
@@ -221,4 +224,7 @@ if __name__ == '__main__':
         val_crite = criteria.PixelAccuracy()
         score = val_crite(output, gt)  # Compute
 
-        break
+        print("loss :", loss.item())
+        print("score :", score.item())
+
+        # break

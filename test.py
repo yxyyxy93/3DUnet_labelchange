@@ -6,7 +6,6 @@ import os
 os.environ['MODE'] = 'test'
 import config
 import dataset
-import model
 import json
 from utils_func.criteria import SSIM3D  # Assuming SSIM3D is defined in utils_func.criteria
 
@@ -20,7 +19,10 @@ def load_checkpoint(model_load, checkpoint_path):
 
 def load_test_dataset():
     # "\"Load and prepare the test dataset
-    test_dataset = dataset.TestDataset(config.image_dir, config.label_dir)  # Adjust as per your dataset class
+    test_dataset = dataset.TestDataset(config.image_dir,
+                                       config.label_dir,
+                                       config.option_type,
+                                       config.dilation_factors)  # Adjust as per your dataset class
     test_loader = DataLoader(test_dataset, batch_size=1,
                              shuffle=False)  # Adjust batch_size and other parameters as needed
     return test_loader
