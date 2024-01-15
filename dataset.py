@@ -5,11 +5,11 @@
 # ==============================================================================
 import queue
 import threading
+import os
+import numpy as np
 
 import matplotlib.pyplot as plt
 import torch
-import os
-import numpy as np
 from torch.utils.data import Dataset, DataLoader
 
 from utils_func import imgproc
@@ -79,7 +79,7 @@ class TrainValidImageDataset(Dataset):
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
- 
+
         # Option 1: Exact location + dilation
         if self.option_type == 1:
             image_origin = np.where(image_origin == 7, 1, 0)
@@ -163,29 +163,28 @@ class TestDataset(Dataset):
         image_origin = read_csv_to_3d_array(label_file)
 
         # print_statistics(image_origin, "After Resize and Restore")
-        new_shape = [21, 21, 320]  # smaller size to match both dataset: image_noisy
-        section_shape = [16, 16, 320]  # random select a section
+        new_shape = [21, 21, 256]  # smaller size to match both dataset: image_noisy
+        section_shape = [16, 16, 256]  # random select a section
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
 
-        image_origin = np.where(image_origin == 1, 1, 0)
-        # # Option 1: Exact location + dilation
-        # if self.option_type == 1:
-        #     image_origin = np.where(image_origin == 7, 1, 0)
-        #     image_origin = imgproc.dilate_3d_array(image_origin, self.dilation_factors)
-        # # Option 2: Shadow effect
-        # elif self.option_type == 2:
-        #     idx_of_7 = np.argmax(image_origin == 7, axis=0)
-        #     # Initialize a mask with all zeros
-        #     image_origin = np.ones_like(image_origin)
-        #     # Step 2: Set the positions greater than the index to True
-        #     for i in range(image_origin.shape[1]):
-        #         for j in range(image_origin.shape[2]):
-        #             if idx_of_7[i, j] != 0:
-        #                 image_origin[idx_of_7[i, j]:, i, j] = 0
-        # else:
-        #     raise ValueError("Invalid option type specified in config.")
+        # Option 1: Exact location + dilation
+        if self.option_type == 1:
+            image_origin = np.where(image_origin == 7, 1, 0)
+            image_origin = imgproc.dilate_3d_array(image_origin, self.dilation_factors)
+        # Option 2: Shadow effect
+        elif self.option_type == 2:
+            idx_of_7 = np.argmax(image_origin == 7, axis=0)
+            # Initialize a mask with all zeros
+            image_origin = np.zeros_like(image_origin)
+            # Step 2: Set the positions greater than the index to True
+            for i in range(image_origin.shape[1]):
+                for j in range(image_origin.shape[2]):
+                    if idx_of_7[i, j] != 0:
+                        image_origin[idx_of_7[i, j]:, i, j] = 1
+        else:
+            raise ValueError("Invalid option type specified in config.")
 
         # First Tensor: Location of Class 1 in terms of W and H
         location_matrix = np.any(image_origin == 1, axis=0)  # Shape: [W, H] for debug
@@ -397,13 +396,12 @@ def plot_dual_orthoslices(data1, data2, value=1):
     # Plotting for the first array
     for i in range(3):
         ax[0, i].imshow(data1.take(indices=center[i], axis=i), cmap='gray', aspect='auto')
-        ax[0, i].set_title(f'Array 1 - Slice {center[i]}')
+        ax[0, i].set_title(f'Slice {center[i]}')
         ax[0, i].axis('off')
 
     # Plotting for the second array
     for i in range(3):
         ax[1, i].imshow(data2.take(indices=center[i], axis=i), cmap='gray', aspect='auto')
-        ax[1, i].set_title(f'Array 2 - Slice {center[i]}')
         ax[1, i].axis('off')
 
     plt.tight_layout()

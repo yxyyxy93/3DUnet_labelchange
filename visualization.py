@@ -25,8 +25,8 @@ def plot_metrics(metrics_plot, title):
 
     # Plot SSIM scores
     plt.subplot(1, 2, 2)
-    plt.plot(metrics_plot['avg_train_scores'], label='Avg Train SSIM')
-    plt.plot(metrics_plot['avg_val_scores'], label='Avg Validation SSIM')
+    plt.plot(metrics_plot['avg_train_scores'], label='Avg Train Score')
+    plt.plot(metrics_plot['avg_val_scores'], label='Avg Validation Score')
     plt.title(f'Average: {title} SSIM')
     plt.xlabel('Epoch')
     plt.ylabel('SSIM Score')
@@ -117,7 +117,7 @@ def visualize_sample(gt_visual, output_visual, slice_idx=(84, 29, 29)):
 if __name__ == "__main__":
     import numpy as np
     import os
-    import vnet
+    import model_unet3d
 
     # Set mode for testing
     os.environ['MODE'] = 'test'
@@ -127,7 +127,8 @@ if __name__ == "__main__":
 
     # ------------- visualize some samples
     # Initialize model
-    model = vnet.__dict__[config.d_arch_name]().to(config.device)
+    model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim,
+                                                      num_classes=config.output_dim)
     model = model.to(device=config.device)
 
     results_dir = config.results_dir
@@ -147,9 +148,13 @@ if __name__ == "__main__":
         model.eval()
         with torch.no_grad():
             output = model(inputs)
+        if torch.all(gt.eq(0)) | torch.all(gt.eq(1)):
+            print("Skipping as gt shows no defect")
+            continue
 
         # Visualize the sample
         plot_dual_orthoslices(gt.squeeze().numpy(), output.squeeze().numpy(), value=1)
+        # break
 
     # ------------- visualize the metrics
     # Directory where the results are stored
@@ -158,8 +163,8 @@ if __name__ == "__main__":
     # Initialize lists to store aggregated metrics
     all_train_losses = []
     all_val_losses = []
-    all_train_ssim_scores = []
-    all_val_ssim_scores = []
+    all_train_scores = []
+    all_val_scores = []
 
     for fold in range(1, num_folds + 1):
         results_file = os.path.join(config.results_dir, f'_fold {fold}', 'training_metrics.json')
@@ -167,8 +172,9 @@ if __name__ == "__main__":
             metrics = read_metrics(results_file)
             all_train_losses.append(metrics['train_losses'])
             all_val_losses.append(metrics['val_losses'])
-            all_train_ssim_scores.append(metrics['train_scores'])
-            all_val_ssim_scores.append(metrics['val_scores'])
+            all_train_scores.append(metrics['train_scores'])
+            all_val_scores.append(metrics['val_scores'])
+
         else:
             print(f"Metrics file for fold {fold} not found.")
 
@@ -176,8 +182,12 @@ if __name__ == "__main__":
     avg_metrics = {
         'avg_train_losses': np.mean(all_train_losses, axis=0),
         'avg_val_losses': np.mean(all_val_losses, axis=0),
-        'avg_train_scores': np.mean(all_train_ssim_scores, axis=0),
-        'avg_val_scores': np.mean(all_val_ssim_scores, axis=0)
+        'avg_train_scores': np.mean(all_train_scores, axis=0),
+        'avg_val_scores': np.mean(all_val_scores, axis=0)
     }
+
+    # print('Val_loss:', np.mean(all_val_losses, axis=0))
+    print('Smallest val_loss:', np.min(all_val_losses))
+    print('Smallest val_scores:', np.min(all_val_scores))
 
     plot_metrics(avg_metrics, "Training and Validation")

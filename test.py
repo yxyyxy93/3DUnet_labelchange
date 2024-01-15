@@ -43,30 +43,54 @@ def evaluate_model(test_loader, model_eval, device):
     return test_ssim_scores
 
 
-def main():
+if __name__ == "__main__":
     # Initialize model
-    convLSTM_model = model.__dict__[config.d_arch_name](input_dim=config.input_dim,
-                                                        hidden_dim=config.hidden_dim,
-                                                        kernel_size=config.kernel_size,
-                                                        output_size=config.output_size).to(config.device)
+    import numpy as np
+    import glob
+    import os
+    import model_unet3d
 
-    # Load model checkpoint
-    convLSTM_model = load_checkpoint(convLSTM_model, config.model_path)
+    # Set mode for testing
+    os.environ['MODE'] = 'test'
+    import config
+    from visualization import read_metrics
+    from test import load_test_dataset, load_checkpoint
+    from dataset import plot_dual_orthoslices
 
-    # Prepare test dataset
-    test_loader = load_test_dataset()
+    # ------------- visualize some samples
+    # Initialize model
+    model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim,
+                                                      num_classes=config.output_dim)
+    model = model.to(device=config.device)
 
-    # Evaluate the model
-    test_ssim_scores = evaluate_model(test_loader, convLSTM_model, config.device)
+    results_dir = "results"
+    fold_number = 1  # Change as needed
+    model_filename = "d_best.pth.tar"
+    # Loop through all subdirectories in results_dir
 
-    # Log and save the test results
-    test_metrics = {
-        "test_ssim_scores": test_ssim_scores,
-        "average_test_ssim": sum(test_ssim_scores) / len(test_ssim_scores)
-    }
-    print(test_metrics)
-    results_file = os.path.join("results", f"{config.exp_name}_test_results.json")
-    with open(results_file, 'w') as f:
-        json.dump(test_metrics, f)
+    for subfolder in glob.glob(os.path.join(results_dir, '*')):
+        # Construct the file path
+        file_path = os.path.join(subfolder, f"_fold {fold_number}", model_filename)
 
-    print(f"Test evaluation completed. Results saved to {results_file}")
+        results_file = os.path.join(subfolder, f"_fold {fold_number}", 'training_metrics.json')
+        if os.path.exists(results_file):
+            metrics = read_metrics(results_file)
+            all_train_losses = metrics['train_losses']
+            all_val_losses = metrics['val_losses']
+            all_train_scores = metrics['train_scores']
+            all_val_scores = metrics['val_scores']
+        else:
+            print(f"Metrics file not found.")
+
+        # Find the index of the minimum value in all_val_losses
+        min_val_loss_index = np.argmin(all_val_losses)
+        # Print the minimum value in all_val_losses and the corresponding value in all_val_scores
+        print(subfolder, "======================")
+        print('Min validation loss:', all_val_losses[min_val_loss_index])
+        print('Validation score:', all_val_scores[min_val_loss_index])
+
+        # # Check if the file exists
+        # if os.path.exists(file_path):
+        #
+        # else:
+        #     print(f"File not found: {file_path}")
