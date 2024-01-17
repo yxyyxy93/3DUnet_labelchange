@@ -152,6 +152,7 @@ if __name__ == "__main__":
             print("Skipping as gt shows no defect")
             continue
 
+        print(data['label'])
         # Visualize the sample
         plot_dual_orthoslices(gt.squeeze().numpy(), output.squeeze().numpy(), value=1)
         # break

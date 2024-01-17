@@ -32,7 +32,7 @@ np.random.seed(0)
 device = show_cuda_gpu_info()
 
 # Model arch config
-input_dim = 1
+input_dim = 2
 hidden_dim = 64
 kernel_size = (3, 3)
 output_dim = 1  # 2 or more classes
@@ -53,7 +53,7 @@ option_type = 1  # 2 for shadowing and 1 for dilation
 dilation_factors = (1, 1, 1)
 
 # Constructing the path
-results_dir = os.path.join("results", f"{exp_name}_{option_type}_{dilation_factors[0]}_2024-01-15")
+results_dir = os.path.join("results", f"{exp_name}_{option_type}_{dilation_factors[0]}_2024-01-17")
 
 # How many iterations to print the training result
 train_print_frequency = 2
