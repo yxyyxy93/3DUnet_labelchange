@@ -198,7 +198,7 @@ class TestDataset(Dataset):
         origin_tensor = torch.from_numpy(image_origin).float()
         noisy_tensor = torch.from_numpy(image_noisy).float()
 
-        return {"gt": origin_tensor, "lr": noisy_tensor, "loc_xy": location_tensor}
+        return {"gt": origin_tensor, "lr": noisy_tensor, "loc_xy": location_tensor, "label": dataset_file}
 
     def __len__(self) -> int:
         return len(self.dataset_label_mapping)
