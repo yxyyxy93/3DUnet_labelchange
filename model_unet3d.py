@@ -132,7 +132,7 @@ if __name__ == '__main__':
     import test  # for debug
     from utils_func import criteria
 
-    model = UNet3D(in_channels=1, num_classes=1)
+    model = UNet3D(in_channels=2, num_classes=1)
     # Prepare test dataset
     test_loader = test.load_test_dataset()
     for data in test_loader:

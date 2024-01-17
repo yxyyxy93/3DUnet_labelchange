@@ -97,20 +97,27 @@ class TrainValidImageDataset(Dataset):
         else:
             raise ValueError("Invalid option type specified in config.")
 
-        # print_statistics(image_origin, "After Rearranging 3D Array")
-        # First Tensor: Location of Class 1 in terms of W and H
         location_matrix = np.any(image_origin == 1, axis=0)  # Shape: [W, H] for debug
 
         image_noisy = imgproc.normalize(image_noisy)
-        image_noisy = image_noisy[np.newaxis, :, :, :]  # add a feature channel
+        # Assuming image_noisy has shape [depth, height, width]
+        depth, height, width = image_noisy.shape
+        # Initialize an array of zeros with the same shape as image_noisy
+        depth_channel = np.zeros_like(image_noisy, dtype=int)
+        # Fill each depth slice with its respective depth index
+        for d in range(depth):
+            depth_channel[d, :, :] = d
+
+        depth_channel = imgproc.normalize(depth_channel)
+        image_noisy_with_depth = np.stack([image_noisy, depth_channel], axis=0)
         image_origin = image_origin[np.newaxis, :, :, :]  # add a feature channel
 
         # Convert location and depth matrices, and noisy image to PyTorch tensors
         location_tensor = torch.from_numpy(location_matrix).long()
         origin_tensor = torch.from_numpy(image_origin).float()
-        noisy_tensor = torch.from_numpy(image_noisy).float()
+        image_noisy_with_depth = torch.from_numpy(image_noisy_with_depth).float()
 
-        return {"gt": origin_tensor, "lr": noisy_tensor, "loc_xy": location_tensor}
+        return {"gt": origin_tensor, "lr": image_noisy_with_depth, "loc_xy": location_tensor}
 
     def __len__(self) -> int:
         return len(self.dataset_label_mapping)
@@ -190,15 +197,24 @@ class TestDataset(Dataset):
         location_matrix = np.any(image_origin == 1, axis=0)  # Shape: [W, H] for debug
 
         image_noisy = imgproc.normalize(image_noisy)
-        image_noisy = image_noisy[np.newaxis, :, :, :]  # add a feature channel
+        # Assuming image_noisy has shape [depth, height, width]
+        depth, height, width = image_noisy.shape
+        # Initialize an array of zeros with the same shape as image_noisy
+        depth_channel = np.zeros_like(image_noisy, dtype=int)
+        # Fill each depth slice with its respective depth index
+        for d in range(depth):
+            depth_channel[d, :, :] = d
+
+        depth_channel = imgproc.normalize(depth_channel)
+        image_noisy_with_depth = np.stack([image_noisy, depth_channel], axis=0)
         image_origin = image_origin[np.newaxis, :, :, :]  # add a feature channel
 
         # Convert location and depth matrices, and noisy image to PyTorch tensors
         location_tensor = torch.from_numpy(location_matrix).long()
         origin_tensor = torch.from_numpy(image_origin).float()
-        noisy_tensor = torch.from_numpy(image_noisy).float()
+        image_noisy_with_depth = torch.from_numpy(image_noisy_with_depth).float()
 
-        return {"gt": origin_tensor, "lr": noisy_tensor, "loc_xy": location_tensor}
+        return {"gt": origin_tensor, "lr": image_noisy_with_depth, "loc_xy": location_tensor}
 
     def __len__(self) -> int:
         return len(self.dataset_label_mapping)
@@ -413,7 +429,7 @@ if __name__ == "__main__":
     import os
 
     # Set mode for testing
-    os.environ['MODE'] = 'train'
+    os.environ['MODE'] = 'test'
     import config
 
     # from visualization import visualize_sample
