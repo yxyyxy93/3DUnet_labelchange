@@ -155,7 +155,7 @@ if __name__ == "__main__":
         print(data['label'])
         # Visualize the sample
         plot_dual_orthoslices(gt.squeeze().numpy(), output.squeeze().numpy(), value=1)
-        # break
+        break
 
     # ------------- visualize the metrics
     # Directory where the results are stored

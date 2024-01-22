@@ -87,6 +87,6 @@ if __name__ == "__main__":
 
     print("File copying complete.")
 
-    for i in range(128, 149):  # 149 because the upper limit in range is exclusive
+    for i in range(180, 185):  # 149 because the upper limit in range is exclusive
         move_subfolder(fr'..\dataset\sim_data\base_model_shiftseed_{i}', r'..\dataset\test\sim_data')
         move_subfolder(fr'..\dataset\sim_struct\base_model_shiftseed_{i}', r'..\dataset\test\sim_struct')

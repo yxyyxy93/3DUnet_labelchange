@@ -53,7 +53,7 @@ option_type = 1  # 2 for shadowing and 1 for dilation
 dilation_factors = (1, 1, 1)
 
 # Constructing the path
-results_dir = os.path.join("results", f"{exp_name}_{option_type}_{dilation_factors[0]}_2024-01-17")
+results_dir = os.path.join("results", f"{exp_name}_{option_type}_{dilation_factors[0]}_2024-01-20")
 
 # How many iterations to print the training result
 train_print_frequency = 2
