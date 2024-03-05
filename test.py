@@ -7,12 +7,8 @@ from torch.utils.data import DataLoader
 from dataset import imgproc
 from utils_func.Read_CSV import read_csv_to_3d_array, save_3d_array_to_csv
 
-# Set mode for testing
-os.environ['MODE'] = 'test'
 import dataset
 from utils_func.criteria import SSIM3D  # Assuming SSIM3D is defined in utils_func.criteria
-import config
-
 
 def load_checkpoint(model_load, checkpoint_path):
     # Load a checkpoint into the model
@@ -47,34 +43,33 @@ def evaluate_model(test_loader, model_eval, device):
     return test_ssim_scores
 
 
-def reassemble_chunks(chunks: list, original_size: tuple = (256, 200, 300),
-                      chunk_size: tuple = (16, 16, 256)) -> np.ndarray:
+def reassemble_chunks(chunks: list, original_size: tuple = (256, 235, 300),
+                      chunk_size: tuple = (16, 16, 256), step: int = 1) -> np.ndarray:
     """
-    Reassembles the segmented chunks back to the original size by averaging intersecting predictions.
-
-    Args:
-        chunks (list): List of segmented chunks.
-        original_size (tuple): Original size of the dataset.
-        chunk_size (tuple): Size of each chunk.
-
-    Returns:
-        np.ndarray: Reassembled dataset.
+    Reassembles the segmented chunks back to the original size by averaging intersecting predictions,
+    with a consistent step size for both segmentation and reassembly.
     """
     reassembled_data = np.zeros(original_size)
     count_matrix = np.zeros(original_size)  # To count the number of predictions at each point
 
-    for i in range(original_size[1] - chunk_size[0] + 1):
-        for j in range(original_size[2] - chunk_size[1] + 1):
-            chunk_idx = i * (original_size[2] - chunk_size[1] + 1) + j
+    # Calculate strides for indexing chunks considering the step size
+    stride_y = ((original_size[1] - chunk_size[0]) // step) + 1
+    stride_x = ((original_size[2] - chunk_size[1]) // step) + 1
+
+    for i in range(0, original_size[1] - chunk_size[0] + 1, step):
+        for j in range(0, original_size[2] - chunk_size[1] + 1, step):
+            # Adjust chunk index calculation for the step size
+            chunk_idx = (i // step) * stride_x + (j // step)
             chunk = chunks[chunk_idx].squeeze()
 
-            reassembled_data[:, :, i:i + chunk_size[0], j:j + chunk_size[1]] += chunk
-            count_matrix[:, :, i:i + chunk_size[0], j:j + chunk_size[1]] += 1
+            reassembled_data[:, i:i + chunk_size[0], j:j + chunk_size[1]] += chunk
+            count_matrix[:, i:i + chunk_size[0], j:j + chunk_size[1]] += 1
+            
+    # Normalize reassembled_data by count_matrix, safely handling zeros
+    count_matrix_with_no_zeros = np.where(count_matrix == 0, 1, count_matrix)
+    normalized_reassembled_data = reassembled_data / count_matrix_with_no_zeros
 
-    # Averaging the predictions
-    reassembled_data /= count_matrix
-
-    return reassembled_data
+    return normalized_reassembled_data
 
 
 class SimpleCSVLoader:
@@ -111,27 +106,52 @@ class SimpleCSVLoader:
 
         return image_noisy_with_depth
 
-    def segment_dataset(self, chunk_size: tuple = (16, 16, 256)) -> list:
+    def segment_dataset(self, chunk_size: tuple = (16, 16, 256), step: int = 1) -> list:
         """
-        Segments the dataset into smaller chunks with a step of 1.
+            Segments the dataset into smaller chunks with a customizable step.
 
-        Args:
+            Args:
             chunk_size (tuple): Size of each chunk.
+            step (int): Step size for sliding the window over the dataset.
 
-        Returns:
+            Returns:
             list: A list of segmented chunks, each as a numpy array.
         """
+        # Assuming self.data is a 4D array with dimensions corresponding to (batch, depth, height, width)
         depth, height, width = self.data.shape[1], self.data.shape[2], self.data.shape[3]
         segmented_data = []
 
-        for i in range(height - chunk_size[0] + 1):
-            for j in range(width - chunk_size[1] + 1):
+        for i in range(0, height - chunk_size[0] + 1, step):
+            for j in range(0, width - chunk_size[1] + 1, step):
                 chunk = self.data[:, :, i:i + chunk_size[0], j:j + chunk_size[1]]
                 segmented_data.append(chunk)
 
-        print(f"Segmented into {len(segmented_data)} chunks, each of size {chunk.shape}.")
+        print(f"Segmented into {len(segmented_data)} chunks, each of size {chunk.shape}, with a step of {step}.")
 
         return segmented_data
+
+
+def process_data(model, segment_data, batch_size, device):
+    segment_output = []
+    batch_segments = []
+
+    for i, segment in enumerate(segment_data):
+        segment_tensor = torch.tensor(segment, dtype=torch.float).to(device)
+        batch_segments.append(segment_tensor.unsqueeze(0))  # Add batch dimension
+
+        if len(batch_segments) == batch_size or i == len(segment_data) - 1:
+            batch_tensor = torch.cat(batch_segments, dim=0)
+            with torch.no_grad():
+                batch_output = model(batch_tensor)
+            batch_output = batch_output.detach().cpu().numpy()
+            segment_output.extend(batch_output)
+            batch_segments = []
+
+        if i % batch_size == 0:
+            print(f"Processed {i / batch_size} / {len(segment_data) / batch_size} segments")
+
+    print("Processing complete.")
+    return segment_output
 
 
 if __name__ == "__main__":
@@ -144,56 +164,40 @@ if __name__ == "__main__":
     os.environ['MODE'] = 'test'
     import config
 
-    # ------------- visualize some samples
-    # Initialize model
-    model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim,
-                                                      num_classes=config.output_dim)
-    model = model.to(device=config.device)
-    fold_number = 1  # Change as needed
-    model_filename = "d_best.pth.tar"
-    model_path = os.path.join(config.results_dir, f"_fold {fold_number}", model_filename)
-    # Load model checkpoint
-    model = load_checkpoint(model, model_path)
+    # User-defined flag to choose processing mode
+    process_from_start = True # Set this to False to load from 'temp_list.npz'
+ 
+    if process_from_start:
+        # Your existing code to initialize and load the model
+        model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim,
+                                                          num_classes=config.output_dim)
+        model = model.to(device=config.device)
+        fold_number = 1 # Change as needed
+        model_filename = "d_best.pth.tar"
+        model_path = os.path.join(config.results_dir, f"_fold {fold_number}", model_filename)
+        model = load_checkpoint(model, model_path)
+ 
+        # Load and preprocess test data
+        testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv")
+        testdata.load_and_preprocess()
+        step = 5
+        segment_data = testdata.segment_dataset(chunk_size=(16, 16), step=step) 
+ 
+        # Define batch size
+        batch_size = 32  # Adjust based on GPU memory
+        # Process data
+        segment_output = process_data(model, segment_data, batch_size, config.device)
+        # Save output to npz
+        np.savez("temp_list", *segment_output)
+    else:
+        # Load the arrays from the .npz file
+        loaded_data = np.load('temp_list.npz')
+        # Extract arrays from the loaded data
+        segment_output = [loaded_data[key] for key in loaded_data]
 
-    testdata = SimpleCSVLoader("./dataset/test/_snr_100000.00_Inst_amplitude.csv")
-    testdata.load_and_preprocess()
-    segment_data = testdata.segment_dataset((16, 16))
-
-    segment_output = []
-    # Define your batch size
-    batch_size = 32  # You can adjust this based on your GPU memory
-    # Temporary list to hold a batch of segments
-    batch_segments = []
-
-    for i, segment in enumerate(segment_data):
-        # Convert segment to a PyTorch tensor and add to the batch
-        segment_tensor = torch.tensor(segment, dtype=torch.float).to(config.device)
-        batch_segments.append(segment_tensor.unsqueeze(0))  # Add batch dimension
-        # Check if the batch is full or if it's the last segment
-        if len(batch_segments) == batch_size or i == len(segment_data) - 1:
-            # Stack segments into a batch
-            batch_tensor = torch.cat(batch_segments, dim=0)
-            # Forward pass through the model
-            with torch.no_grad():
-                batch_output = model(batch_tensor)
-            # Convert the outputs to the desired format and add to the segment_output list
-            batch_output = batch_output.detach().cpu()
-            segment_output.extend(batch_output.unbind())
-            # Clear the batch_segments list for the next batch
-            batch_segments = []
-        # Print progress every n segments
-        if i % batch_size == 0:
-            print(f"Processed {i / batch_size} / {len(segment_data) / batch_size} segments")
-
-    print("Processing complete.")
-
-    # np.savez("temp_list", *segment_output
-    # Load the arrays from the .npz file
-    loaded_data = np.load('temp_list.npz')
-    # Extract arrays from the loaded data
-    segment_output = [loaded_data[key] for key in loaded_data]
-
-    reassembled_data = reassemble_chunks(segment_output)
-    # Save to CSV
-    save_path = "./dataset/test/exp_test_results.csv"
+    # Reassemble and save the data
+    reassembled_data = reassemble_chunks(segment_output, step=step)
+    save_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/exp_test_results.csv"
+    # Assuming original data was in (height, width, depth), revert the reassembled data to this order
+    reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
     save_3d_array_to_csv(reassembled_data, save_path)
