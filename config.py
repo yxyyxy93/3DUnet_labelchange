@@ -49,11 +49,11 @@ val_function = "PixelAccuracy"
 # Experiment name, easy to save weights and log files
 exp_name = d_arch_name + "_" + loss_function
 # choose exact position or shadow effect, define the dilation
-option_type = 1  # 2 for shadowing and 1 for dilation
+option_type = 2 # 2 for shadowing and 1 for dilation
 dilation_factors = (1, 1, 1)
 
 # Constructing the path
-results_dir = os.path.join("results", f"{exp_name}_{option_type}_{dilation_factors[0]}_2024-01-20")
+results_dir = os.path.join("results", f"{exp_name}_{option_type}_{dilation_factors[0]}_2024-03-06")
 
 # How many iterations to print the training result
 train_print_frequency = 2
@@ -103,5 +103,5 @@ if mode == "train":
 elif mode == "test":
     print("testing mode")
     # Test data address To be modified ...
-    image_dir = r'dataset/test/sim_data'  # path to the 'sim_data' directory
+    image_dir = r'dataset/test/chunks_1'  # path to the 'sim_data' directory
     label_dir = r'dataset/test/sim_struct'  # path to the 'sim_struct' directory

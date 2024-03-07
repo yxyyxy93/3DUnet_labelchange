@@ -32,14 +32,13 @@ class TrainValidImageDataset(Dataset):
     data set is not for data enhancement.
     """
 
-    def __init__(self, image_dir: str, label_dir: int, option_type=2, dilation_factors=None) -> None:
+    def __init__(self, image_dirs: str, label_dir: int, option_type=2, dilation_factors=None) -> None:
         super(TrainValidImageDataset, self).__init__()
         if dilation_factors is None:
             dilation_factors = [10, 1, 1]
-        self.image_dir = image_dir
+        self.image_dirs = image_dirs
         self.label_dir = label_dir
-        # Get all subdirectories in the image directory
-        self.subdirs = [d for d in os.listdir(image_dir) if os.path.isdir(os.path.join(image_dir, d))]
+        self.subdirs = []
         # Create a mapping from dataset files to label files
         self.dataset_label_mapping = self._create_dataset_label_mapping()
 
@@ -49,30 +48,45 @@ class TrainValidImageDataset(Dataset):
 
     def _create_dataset_label_mapping(self):
         mapping = {}
-        # Iterate through each subdirectory
-        for subdir in self.subdirs:
-            dataset_path = os.path.join(self.image_dir, subdir)
-            label_path = os.path.join(self.label_dir, subdir)
-            # Get all dataset and label files in the subdirectory
-            dataset_files = [f for f in os.listdir(dataset_path) if f.endswith('.csv')]
-            label_file = [f for f in os.listdir(label_path) if f.startswith('structure')]
-            # Map each dataset file to its corresponding label file
-            for dataset_file in dataset_files:
-                # Assuming the file names are the same except for the prefix 'structure'
-                # and the extension '.00.csv'
-                full_dataset_file = os.path.join(dataset_path, dataset_file)
-                full_label_file = os.path.join(label_path, label_file[0])
-                mapping[full_dataset_file] = full_label_file
+        # Iterate through each image directory in the list
+        for image_dir in self.image_dirs:
+            # Get all subdirectories in the current image directory
+            subdirs = [d for d in os.listdir(image_dir) if os.path.isdir(os.path.join(image_dir, d))]
+            self.subdirs.extend(subdirs)  # Extend the main subdirs list with the new ones
+            
+            # Iterate through each subdir to process dataset and label files
+            for subdir in subdirs:
+                dataset_path = os.path.join(image_dir, subdir)
+                label_path = os.path.join(self.label_dir, subdir)
+                
+                dataset_files = [f for f in os.listdir(dataset_path) if f.endswith('.csv')]
+                
+                if not os.path.exists(label_path):
+                    for dataset_file in dataset_files:
+                        full_dataset_file = os.path.join(dataset_path, dataset_file)
+                        mapping[full_dataset_file] = ""  # No label file exists
+                else:
+                    label_file = [f for f in os.listdir(label_path) if f.startswith('structure')]
+                    for dataset_file in dataset_files:
+                        full_dataset_file = os.path.join(dataset_path, dataset_file)
+                        full_label_file = os.path.join(label_path, label_file[0]) if label_file else ""
+                        mapping[full_dataset_file] = full_label_file
 
         return mapping
 
     def __getitem__(self, batch_index: int) -> [torch.Tensor, torch.Tensor]:
         # Use the mapping to get the dataset and label files
         dataset_file = list(self.dataset_label_mapping.keys())[batch_index]
-        label_file = self.dataset_label_mapping[dataset_file]
         # Load the images
         image_noisy = read_csv_to_3d_array(dataset_file)
-        image_origin = read_csv_to_3d_array(label_file)
+        label_file = self.dataset_label_mapping[dataset_file]
+        if label_file != "":
+            # Load the original image if label file exists
+            image_origin = read_csv_to_3d_array(label_file)
+        else:
+            # print("experiement - defect free")
+            # If label file does not exist, create an all-zero array with the same shape as image_noisy
+            image_origin = np.zeros_like(image_noisy)
         # print_statistics(image_origin, "After Resize and Restore")
         new_shape = [21, 21, 256]  # smaller size to match both dataset: image_noisy
         section_shape = [16, 16, 256]  # random select a section
@@ -93,7 +107,7 @@ class TrainValidImageDataset(Dataset):
             for i in range(image_origin.shape[1]):
                 for j in range(image_origin.shape[2]):
                     if idx_of_7[i, j] != 0:
-                        image_origin[idx_of_7[i, j]:, i, j] = 1
+                        image_origin[idx_of_7[i, j]:min(idx_of_7[i, j] + 40, section_shape[2]), i, j] = 1
         else:
             raise ValueError("Invalid option type specified in config.")
 
@@ -168,14 +182,12 @@ class TestDataset(Dataset):
         # Load the images
         image_noisy = read_csv_to_3d_array(dataset_file)
         image_origin = read_csv_to_3d_array(label_file)
-
         # print_statistics(image_origin, "After Resize and Restore")
         new_shape = [21, 21, 256]  # smaller size to match both dataset: image_noisy
         section_shape = [16, 16, 256]  # random select a section
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
-
         # Option 1: Exact location + dilation
         if self.option_type == 1:
             image_origin = np.where(image_origin == 7, 1, 0)
@@ -189,13 +201,11 @@ class TestDataset(Dataset):
             for i in range(image_origin.shape[1]):
                 for j in range(image_origin.shape[2]):
                     if idx_of_7[i, j] != 0:
-                        image_origin[idx_of_7[i, j]:, i, j] = 1
+                        image_origin[idx_of_7[i, j]:min(idx_of_7[i, j] + 40, section_shape[2]), i, j] = 1
         else:
             raise ValueError("Invalid option type specified in config.")
-
         # First Tensor: Location of Class 1 in terms of W and H
         location_matrix = np.any(image_origin == 1, axis=0)  # Shape: [W, H] for debug
-
         image_noisy = imgproc.normalize(image_noisy)
         # Assuming image_noisy has shape [depth, height, width]
         depth, height, width = image_noisy.shape
@@ -204,16 +214,13 @@ class TestDataset(Dataset):
         # Fill each depth slice with its respective depth index
         for d in range(depth):
             depth_channel[d, :, :] = d
-
         depth_channel = imgproc.normalize(depth_channel)
         image_noisy_with_depth = np.stack([image_noisy, depth_channel], axis=0)
         image_origin = image_origin[np.newaxis, :, :, :]  # add a feature channel
-
         # Convert location and depth matrices, and noisy image to PyTorch tensors
         location_tensor = torch.from_numpy(location_matrix).long()
         origin_tensor = torch.from_numpy(image_origin).float()
         image_noisy_with_depth = torch.from_numpy(image_noisy_with_depth).float()
-
         return {"gt": origin_tensor, "lr": image_noisy_with_depth, "loc_xy": location_tensor, 'label': dataset_file}
 
     def __len__(self) -> int:
@@ -429,21 +436,18 @@ if __name__ == "__main__":
     import os
 
     # Set mode for testing
-    os.environ['MODE'] = 'test'
+    os.environ['MODE'] = 'train'
     import config
 
     # from visualization import visualize_sample
-
     # ------------- visualize some samples
     # Prepare test dataset
     test_dataset = TrainValidImageDataset(config.image_dir,
                                           config.label_dir,
                                           option_type=config.option_type,
                                           dilation_factors=config.dilation_factors)
-
     test_loader = DataLoader(test_dataset, batch_size=1,
                              shuffle=False)  # Adjust batch_size and other parameters as needed
-
     for data in test_loader:
         input = data['lr'].to(config.device)
         gt = data['gt'].to(config.device)
@@ -453,5 +457,4 @@ if __name__ == "__main__":
             continue
         print(input.shape)
         print(gt.shape)
-
-        plot_dual_orthoslices(gt.squeeze().numpy(), input.squeeze().numpy(), value=1)
+        # plot_dual_orthoslices(gt.squeeze().numpy(), input[:, 0, :, :, :].squeeze().numpy(), value=1)

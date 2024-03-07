@@ -180,11 +180,11 @@ if __name__ == "__main__":
         # Load and preprocess test data
         testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv")
         testdata.load_and_preprocess()
-        step = 5
+        step = 1
         segment_data = testdata.segment_dataset(chunk_size=(16, 16), step=step) 
  
         # Define batch size
-        batch_size = 32  # Adjust based on GPU memory
+        batch_size = 64  # Adjust based on GPU memory
         # Process data
         segment_output = process_data(model, segment_data, batch_size, config.device)
         # Save output to npz
@@ -196,7 +196,9 @@ if __name__ == "__main__":
         segment_output = [loaded_data[key] for key in loaded_data]
 
     # Reassemble and save the data
-    reassembled_data = reassemble_chunks(segment_output, step=step)
+    original_size = (256, 241, 281)
+    # original_size = (256, 235, 300)
+    reassembled_data = reassemble_chunks(segment_output, original_size=original_size, step=step)
     save_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/exp_test_results.csv"
     # Assuming original data was in (height, width, depth), revert the reassembled data to this order
     reassembled_data = np.transpose(reassembled_data, (1, 2, 0))

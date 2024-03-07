@@ -161,7 +161,7 @@ def main():
 
 def load_dataset(num_folds=5) -> list:
     # Load the full dataset
-    full_dataset = TrainValidImageDataset(image_dir=config.image_dir,
+    full_dataset = TrainValidImageDataset(image_dirs=config.image_dirs,
                                           label_dir=config.label_dir,
                                           option_type=config.option_type,
                                           dilation_factors=config.dilation_factors)

@@ -1,22 +1,28 @@
 import numpy as np
 
+import numpy as np
+
 
 def read_csv_to_3d_array(filepath):
-    # Open the file
     with open(filepath, 'r') as file:
-        # Read the first line to get the dimensions
-        x, y, z = map(int, file.readline().strip().split(','))
-
-        # Initialize an empty 3D NumPy array
-        data_3d_np = np.zeros((x, y, z))
-
-        # Read the rest of the lines and fill the 3D array
-        for i in range(x):
-            for j in range(y):
+        # Read the first line to get the dimensions for x and y
+        x, y = map(int, file.readline().strip().split(',')[:2])
+        # Initialize a list to store 2D slices
+        data_slices = []
+        for _ in range(x):
+            slice_2d = []
+            for _ in range(y):
                 line = file.readline().strip().split(',')
-                data_3d_np[i, j, :] = np.array(line[0:z], dtype=float)
+                # Convert the line to a NumPy array and append to the 2D slice
+                slice_2d.append(np.array(line, dtype=float))
+
+            # Stack the 2D slices to form a 3D array
+            data_slices.append(np.stack(slice_2d, axis=0))
+        # Stack all 2D slices to create the final 3D array
+        data_3d_np = np.stack(data_slices, axis=0)
 
     return data_3d_np
+
 
 def save_3d_array_to_csv(data_3d_np, filepath):
     """
