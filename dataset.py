@@ -58,7 +58,6 @@ class TrainValidImageDataset(Dataset):
             for subdir in subdirs:
                 dataset_path = os.path.join(image_dir, subdir)
                 label_path = os.path.join(self.label_dir, subdir)
-                
                 dataset_files = [f for f in os.listdir(dataset_path) if f.endswith('.csv')]
                 
                 if not os.path.exists(label_path):

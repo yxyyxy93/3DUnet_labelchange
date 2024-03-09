@@ -29,6 +29,7 @@ os.environ['MODE'] = 'train'
 import config
 import model_unet3d
 
+import test
 
 def main():
     # Load datasets for each fold
@@ -157,7 +158,35 @@ def main():
                             )
 
         print(f"Completed training on fold {fold + 1}")
+        # Break the loop after the first iteration
+        break
 
+    # ********************* test on experiments ********
+    # Parameters
+    fold_number = 1
+    model_filename = "d_best.pth.tar"
+    process_from_start = True  # User-defined flag to choose processing mode
+    step = 5
+    # Remove the first 8 characters from config.results_dir
+    modified_results_dir = config.results_dir[8:]
+    # Function call    
+    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_1.csv"
+    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_1_{modified_results_dir}.csv"
+    test.process_ultrasound_data(fold_number=fold_number, 
+                            model_filename=model_filename, 
+                            test_data_path=test_data_path, 
+                            save_path=save_path, 
+                            process_from_start=process_from_start,
+                            step = step)
+    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
+    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
+    test.process_ultrasound_data(fold_number=fold_number, 
+                            model_filename=model_filename, 
+                            test_data_path=test_data_path, 
+                            save_path=save_path, 
+                            process_from_start=process_from_start,
+                            step = step)
+    # **************************************************
 
 def load_dataset(num_folds=5) -> list:
     # Load the full dataset

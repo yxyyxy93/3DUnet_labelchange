@@ -9,6 +9,8 @@ from utils_func.Read_CSV import read_csv_to_3d_array, save_3d_array_to_csv
 
 import dataset
 from utils_func.criteria import SSIM3D  # Assuming SSIM3D is defined in utils_func.criteria
+import model_unet3d
+import config
 
 def load_checkpoint(model_load, checkpoint_path):
     # Load a checkpoint into the model
@@ -120,15 +122,14 @@ class SimpleCSVLoader:
         # Assuming self.data is a 4D array with dimensions corresponding to (batch, depth, height, width)
         depth, height, width = self.data.shape[1], self.data.shape[2], self.data.shape[3]
         segmented_data = []
-
         for i in range(0, height - chunk_size[0] + 1, step):
             for j in range(0, width - chunk_size[1] + 1, step):
                 chunk = self.data[:, :, i:i + chunk_size[0], j:j + chunk_size[1]]
                 segmented_data.append(chunk)
-
         print(f"Segmented into {len(segmented_data)} chunks, each of size {chunk.shape}, with a step of {step}.")
 
-        return segmented_data
+        original_size = [depth, height, width]
+        return segmented_data, original_size
 
 
 def process_data(model, segment_data, batch_size, device):
@@ -154,6 +155,45 @@ def process_data(model, segment_data, batch_size, device):
     return segment_output
 
 
+def process_ultrasound_data(fold_number=1, model_filename="d_best.pth.tar", 
+                            test_data_path="/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude.csv", 
+                            save_path="/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/exp_test_results.csv", 
+                            process_from_start=True,
+                            step = 1):
+    # Set mode for testing
+    os.environ['MODE'] = 'test'
+
+    if process_from_start:
+        # Initialize and load the model
+        model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim, num_classes=config.output_dim)
+        model = model.to(device=config.device)
+        model_path = os.path.join(config.results_dir, f"_fold {fold_number}", model_filename)
+        model = load_checkpoint(model, model_path)
+
+        # Load and preprocess test data
+        testdata = SimpleCSVLoader(test_data_path)
+        testdata.load_and_preprocess()
+        segment_data, original_size = testdata.segment_dataset(chunk_size=(16, 16), step=step)
+
+        # Define batch size
+        batch_size = 64
+        # Process data
+        segment_output = process_data(model, segment_data, batch_size, config.device)
+        # Save output to npz
+        np.savez("temp_list", *segment_output)
+    else:
+        # Load the arrays from the .npz file
+        loaded_data = np.load('temp_list.npz')
+        segment_output = [loaded_data[key] for key in loaded_data]
+        
+    # Reassemble and save the data
+    print(original_size)
+    reassembled_data = reassemble_chunks(segment_output, original_size=original_size, step=step)
+    # Assuming original data was in (height, width, depth), revert the reassembled data to this order
+    reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
+    save_3d_array_to_csv(reassembled_data, save_path)
+    
+
 if __name__ == "__main__":
     # Initialize model
     import numpy as np
@@ -164,42 +204,18 @@ if __name__ == "__main__":
     os.environ['MODE'] = 'test'
     import config
 
-    # User-defined flag to choose processing mode
-    process_from_start = True # Set this to False to load from 'temp_list.npz'
- 
-    if process_from_start:
-        # Your existing code to initialize and load the model
-        model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim,
-                                                          num_classes=config.output_dim)
-        model = model.to(device=config.device)
-        fold_number = 1 # Change as needed
-        model_filename = "d_best.pth.tar"
-        model_path = os.path.join(config.results_dir, f"_fold {fold_number}", model_filename)
-        model = load_checkpoint(model, model_path)
- 
-        # Load and preprocess test data
-        testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv")
-        testdata.load_and_preprocess()
-        step = 1
-        segment_data = testdata.segment_dataset(chunk_size=(16, 16), step=step) 
- 
-        # Define batch size
-        batch_size = 64  # Adjust based on GPU memory
-        # Process data
-        segment_output = process_data(model, segment_data, batch_size, config.device)
-        # Save output to npz
-        np.savez("temp_list", *segment_output)
-    else:
-        # Load the arrays from the .npz file
-        loaded_data = np.load('temp_list.npz')
-        # Extract arrays from the loaded data
-        segment_output = [loaded_data[key] for key in loaded_data]
-
-    # Reassemble and save the data
-    original_size = (256, 241, 281)
-    # original_size = (256, 235, 300)
-    reassembled_data = reassemble_chunks(segment_output, original_size=original_size, step=step)
+    # Parameters
+    fold_number = 1
+    model_filename = "d_best.pth.tar"
+    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude.csv"
     save_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/exp_test_results.csv"
-    # Assuming original data was in (height, width, depth), revert the reassembled data to this order
-    reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
-    save_3d_array_to_csv(reassembled_data, save_path)
+    process_from_start = True  # User-defined flag to choose processing mode
+    step = 5
+    
+    # Function call
+    process_ultrasound_data(fold_number=fold_number, 
+                            model_filename=model_filename, 
+                            test_data_path=test_data_path, 
+                            save_path=save_path, 
+                            process_from_start=process_from_start,
+                            step = 5)
