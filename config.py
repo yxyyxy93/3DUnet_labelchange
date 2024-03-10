@@ -49,11 +49,14 @@ val_function = "PixelAccuracy"
 # Experiment name, easy to save weights and log files
 exp_name = d_arch_name + "_" + loss_function
 # choose exact position or shadow effect, define the dilation
-option_type = 2 # 2 for shadowing and 1 for dilation
+option_type = 2  # 2 for shadowing and 1 for dilation
 dilation_factors = (1, 1, 1)
 
+# samples 
+max_samples = 1000
+
 # Constructing the path
-results_dir = os.path.join("results", f"{exp_name}_{option_type}_{dilation_factors[0]}_2024-03-06")
+results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_2024-03-10")
 
 # How many iterations to print the training result
 train_print_frequency = 2
@@ -66,10 +69,15 @@ mode = os.environ.get('MODE')
 if mode == "train":
     print("train mode")
     # Dataset address
-    image_dir = r'dataset/sim_data'  # path to the 'sim_data' directory
-    label_dir = r'dataset/sim_struct'  # path to the 'sim_struct' directory
+    image_dirs = [
+    #'/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/sim_data_810', 
+    #'/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/sim_data_810', 
+    #'/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/sim_data_805',
+    '/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/sim_data_815'
+    ]  # path to the 'sim_data' directory
+    label_dir = '/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/sim_struct'  # path to the 'sim_struct' directory
 
-    batch_size = 16
+    batch_size = 32
     num_workers = 4
 
     # The address to load the pretrained model
@@ -83,7 +91,7 @@ if mode == "train":
     resume = ""
 
     # Total num epochs
-    epochs = 50
+    epochs = 1
 
     # Optimizer parameter
     model_lr = 1e-3
@@ -103,5 +111,5 @@ if mode == "train":
 elif mode == "test":
     print("testing mode")
     # Test data address To be modified ...
-    image_dir = r'dataset/test/chunks_1'  # path to the 'sim_data' directory
+    image_dir = r'dataset/test/sim_data'  # path to the 'sim_data' directory
     label_dir = r'dataset/test/sim_struct'  # path to the 'sim_struct' directory

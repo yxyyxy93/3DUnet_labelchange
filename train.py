@@ -79,7 +79,7 @@ def main():
         # Get current date
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         # Create a experiment results
-        results_dir = os.path.join("./results", f"{config.exp_name}_{config.option_type}_{config.dilation_factors[0]}_{current_date}",
+        results_dir = os.path.join("./results", f"{config.exp_name}_{config.option_type}_{config.max_samples}_{config.dilation_factors[0]}_{current_date}",
                                    f"_fold {fold + 1}")
         make_directory(results_dir)
 
@@ -193,7 +193,8 @@ def load_dataset(num_folds=5) -> list:
     full_dataset = TrainValidImageDataset(image_dirs=config.image_dirs,
                                           label_dir=config.label_dir,
                                           option_type=config.option_type,
-                                          dilation_factors=config.dilation_factors)
+                                          dilation_factors=config.dilation_factors,
+                                          max_samples=config.max_samples)
 
     dataset_size = len(full_dataset)
     indices = torch.randperm(dataset_size).tolist()

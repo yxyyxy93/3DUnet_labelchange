@@ -32,14 +32,15 @@ class TrainValidImageDataset(Dataset):
     data set is not for data enhancement.
     """
 
-    def __init__(self, image_dirs: str, label_dir: int, option_type=2, dilation_factors=None) -> None:
+    def __init__(self, image_dirs: str, label_dir: int, option_type=2, dilation_factors=None, max_samples=None) -> None:
         super(TrainValidImageDataset, self).__init__()
         if dilation_factors is None:
             dilation_factors = [10, 1, 1]
         self.image_dirs = image_dirs
         self.label_dir = label_dir
         self.subdirs = []
-        # Create a mapping from dataset files to label files
+        self.max_samples =  max_samples     
+        #    Create a mapping from dataset files to label files
         self.dataset_label_mapping = self._create_dataset_label_mapping()
 
         # labels setting
@@ -53,13 +54,11 @@ class TrainValidImageDataset(Dataset):
             # Get all subdirectories in the current image directory
             subdirs = [d for d in os.listdir(image_dir) if os.path.isdir(os.path.join(image_dir, d))]
             self.subdirs.extend(subdirs)  # Extend the main subdirs list with the new ones
-            
             # Iterate through each subdir to process dataset and label files
             for subdir in subdirs:
                 dataset_path = os.path.join(image_dir, subdir)
                 label_path = os.path.join(self.label_dir, subdir)
                 dataset_files = [f for f in os.listdir(dataset_path) if f.endswith('.csv')]
-                
                 if not os.path.exists(label_path):
                     for dataset_file in dataset_files:
                         full_dataset_file = os.path.join(dataset_path, dataset_file)
@@ -70,6 +69,9 @@ class TrainValidImageDataset(Dataset):
                         full_dataset_file = os.path.join(dataset_path, dataset_file)
                         full_label_file = os.path.join(label_path, label_file[0]) if label_file else ""
                         mapping[full_dataset_file] = full_label_file
+        # cut the dataset to a specific size
+        if self.max_samples is not None and len(mapping) > self.max_samples:
+            mapping = dict(list(mapping.items())[:self.max_samples])
 
         return mapping
 
