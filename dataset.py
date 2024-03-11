@@ -8,6 +8,8 @@ import threading
 import os
 import numpy as np
 
+import random
+
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -69,9 +71,15 @@ class TrainValidImageDataset(Dataset):
                         full_dataset_file = os.path.join(dataset_path, dataset_file)
                         full_label_file = os.path.join(label_path, label_file[0]) if label_file else ""
                         mapping[full_dataset_file] = full_label_file
+                        
+        # Print the size of the original dataset
+        print(f"Original dataset size: {len(mapping)}")
         # cut the dataset to a specific size
         if self.max_samples is not None and len(mapping) > self.max_samples:
-            mapping = dict(list(mapping.items())[:self.max_samples])
+            # Randomly select self.max_samples keys from the mapping
+            selected_keys = random.sample(list(mapping.keys()), self.max_samples)
+            # Create a new dictionary with the selected random keys
+            mapping = {key: mapping[key] for key in selected_keys}
 
         return mapping
 
