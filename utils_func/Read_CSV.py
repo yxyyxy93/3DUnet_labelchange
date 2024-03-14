@@ -1,6 +1,5 @@
 import numpy as np
-
-import numpy as np
+import base64
 
 
 def read_csv_to_3d_array(filepath):
@@ -40,8 +39,8 @@ def save_3d_array_to_csv(data_3d_np, filepath):
         # Write the rest of the data
         for i in range(x):
             for j in range(y):
-                # Convert the slice of the 3D array to a comma-separated string
-                line = ','.join(map(str, data_3d_np[i, j, :]))
+                ## Convert the slice of the 3D array to a comma-separated string
+                line = ','.join([f"{val:.2f}" for val in data_3d_np[i, j, :]])
                 file.write(line + '\n')
 
 
