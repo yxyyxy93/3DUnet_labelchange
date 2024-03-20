@@ -113,14 +113,12 @@ def main():
                                                    criterion,  # Pass the loss criterion to validate
                                                    val_crite,
                                                    "Val")
-
             # After train and validate calls
             # Save the training and validation metrics
             epoch_train_losses.append(avg_train_loss)
             epoch_train_scores.append(avg_train_score)
             epoch_val_losses.append(avg_val_loss)
             epoch_val_scores.append(avg_val_score)
-
             metrics = {
                 "train_losses": epoch_train_losses,
                 "train_scores": epoch_train_scores,
@@ -132,17 +130,14 @@ def main():
             with open(results_file, 'w') as f:
                 json.dump(metrics, f)
             print("\n")
-
             # Update LR
             scheduler.step()
-
             # Automatically save the model with the lowest validation loss
             is_best = avg_val_loss < lowest_val_loss
             is_last = (epoch + 1) == config.epochs
             if is_best:
                 lowest_val_loss = min(avg_val_loss, lowest_val_loss)
                 best_score = avg_val_score
-
             save_checkpoint({"epoch": epoch + 1,
                              "best_score": best_score,
                              "best_loss": lowest_val_loss,
@@ -156,7 +151,6 @@ def main():
                             is_best=is_best,
                             is_last=is_last
                             )
-
         print(f"Completed training on fold {fold + 1}")
         # Break the loop after the first iteration
         break

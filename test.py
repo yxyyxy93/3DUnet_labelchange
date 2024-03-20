@@ -53,17 +53,14 @@ def reassemble_chunks(chunks: list, original_size: tuple = (256, 235, 300),
     """
     reassembled_data = np.zeros(original_size)
     count_matrix = np.zeros(original_size)  # To count the number of predictions at each point
-
     # Calculate strides for indexing chunks considering the step size
     stride_y = ((original_size[1] - chunk_size[0]) // step) + 1
     stride_x = ((original_size[2] - chunk_size[1]) // step) + 1
-
     for i in range(0, original_size[1] - chunk_size[0] + 1, step):
         for j in range(0, original_size[2] - chunk_size[1] + 1, step):
             # Adjust chunk index calculation for the step size
             chunk_idx = (i // step) * stride_x + (j // step)
             chunk = chunks[chunk_idx].squeeze()
-
             reassembled_data[:, i:i + chunk_size[0], j:j + chunk_size[1]] += chunk
             count_matrix[:, i:i + chunk_size[0], j:j + chunk_size[1]] += 1
             
@@ -162,21 +159,18 @@ def process_ultrasound_data(fold_number=1, model_filename="d_best.pth.tar",
                             step = 1):
     # Set mode for testing
     os.environ['MODE'] = 'test'
-
     if process_from_start:
         # Initialize and load the model
         model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim, num_classes=config.output_dim)
         model = model.to(device=config.device)
         model_path = os.path.join(config.results_dir, f"_fold {fold_number}", model_filename)
         model = load_checkpoint(model, model_path)
-
         # Load and preprocess test data
         testdata = SimpleCSVLoader(test_data_path)
         testdata.load_and_preprocess()
         segment_data, original_size = testdata.segment_dataset(chunk_size=(16, 16), step=step)
-
         # Define batch size
-        batch_size = 64
+        batch_size = 32
         # Process data
         segment_output = process_data(model, segment_data, batch_size, config.device)
         # Save output to npz
@@ -185,7 +179,6 @@ def process_ultrasound_data(fold_number=1, model_filename="d_best.pth.tar",
         # Load the arrays from the .npz file
         loaded_data = np.load('temp_list.npz')
         segment_output = [loaded_data[key] for key in loaded_data]
-        
     # Reassemble and save the data
     print(original_size)
     reassembled_data = reassemble_chunks(segment_output, original_size=original_size, step=step)
@@ -207,8 +200,9 @@ if __name__ == "__main__":
     # Parameters
     fold_number = 1
     model_filename = "d_best.pth.tar"
-    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude.csv"
-    save_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/exp_test_results.csv"
+    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_1.csv"
+    modified_results_dir = config.results_dir[8:]
+    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_1_{modified_results_dir}.csv"
     process_from_start = True  # User-defined flag to choose processing mode
     step = 5
     
@@ -219,3 +213,17 @@ if __name__ == "__main__":
                             save_path=save_path, 
                             process_from_start=process_from_start,
                             step = 5)
+                            
+    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
+    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
+    # Function call
+    process_ultrasound_data(fold_number=fold_number, 
+                            model_filename=model_filename, 
+                            test_data_path=test_data_path, 
+                            save_path=save_path, 
+                            process_from_start=process_from_start,
+                            step = 5)
+                            
+                            
+                            
+                            
