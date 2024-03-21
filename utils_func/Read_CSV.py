@@ -1,5 +1,4 @@
 import numpy as np
-import base64
 
 
 def read_csv_to_3d_array(filepath):
