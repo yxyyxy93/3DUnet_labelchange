@@ -31,6 +31,7 @@ import model_unet3d
 
 import test
 
+
 def main():
     # Load datasets for each fold
     dataloaders_per_fold = load_dataset(num_folds=5)
@@ -79,7 +80,8 @@ def main():
         # Get current date
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         # Create a experiment results
-        results_dir = os.path.join("./results", f"{config.exp_name}_{config.option_type}_{config.max_samples}_{config.dilation_factors[0]}_{current_date}",
+        results_dir = os.path.join("./results",
+                                   f"{config.exp_name}_{config.option_type}_{config.max_samples}_{config.dilation_factors[0]}_{current_date}",
                                    f"_fold {fold + 1}")
         make_directory(results_dir)
 
@@ -160,27 +162,28 @@ def main():
     fold_number = 1
     model_filename = "d_best.pth.tar"
     process_from_start = True  # User-defined flag to choose processing mode
-    step = 5
+    step = 1
     # Remove the first 8 characters from config.results_dir
     modified_results_dir = config.results_dir[8:]
     # Function call    
     test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_1.csv"
     save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_1_{modified_results_dir}.csv"
-    test.process_ultrasound_data(fold_number=fold_number, 
-                            model_filename=model_filename, 
-                            test_data_path=test_data_path, 
-                            save_path=save_path, 
-                            process_from_start=process_from_start,
-                            step = step)
+    test.process_ultrasound_data(fold_number=fold_number,
+                                 model_filename=model_filename,
+                                 test_data_path=test_data_path,
+                                 save_path=save_path,
+                                 process_from_start=process_from_start,
+                                 step=step)
     test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
     save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
-    test.process_ultrasound_data(fold_number=fold_number, 
-                            model_filename=model_filename, 
-                            test_data_path=test_data_path, 
-                            save_path=save_path, 
-                            process_from_start=process_from_start,
-                            step = step)
+    test.process_ultrasound_data(fold_number=fold_number,
+                                 model_filename=model_filename,
+                                 test_data_path=test_data_path,
+                                 save_path=save_path,
+                                 process_from_start=process_from_start,
+                                 step=step)
     # **************************************************
+
 
 def load_dataset(num_folds=5) -> list:
     # Load the full dataset

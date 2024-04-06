@@ -20,9 +20,9 @@ def normalize(image):
     return image
 
 
-def resample_3d_array_numpy(image_origin, image_noisy, new_shape, section_shape):
+def resample_3d_array_numpy(image_origin, image_noisy, new_shape, section_shape=None):
     new_H, new_W, new_D = new_shape
-    section_H, section_W, section_D = section_shape
+    # section_H, section_W, section_D = section_shape
 
     # Resample the original image
     H_orig, W_orig, D_orig = image_origin.shape
@@ -52,21 +52,26 @@ def resample_3d_array_numpy(image_origin, image_noisy, new_shape, section_shape)
                 orig_d = min(int(round(d * ratio_d)), D_orig - 1)
                 resampled_image_noisy[d, w, h] = image_noisy[orig_h, orig_w, orig_d]
 
-    # Select a random section from the resampled image
-    start_h = np.random.randint(0, new_H - section_H + 1)
-    start_w = np.random.randint(0, new_W - section_W + 1)
-    start_d = np.random.randint(0, new_D - section_D + 1)
+    # Repeat horizontally and vertically
+    tile_ratio = 2
+    resampled_image_origin = np.tile(resampled_image_origin[:, 1:, 1:], (1, tile_ratio, tile_ratio))
+    resampled_image_noisy = np.tile(resampled_image_noisy[:, 1:, 1:], (1, tile_ratio, tile_ratio))
 
-    section_origin = resampled_image_origin[
-                     start_d:start_d + section_D,
-                     start_h:start_h + section_H,
-                     start_w:start_w + section_W]
-    section_noisy = resampled_image_noisy[
-                    start_d:start_d + section_D,
-                    start_h:start_h + section_H,
-                    start_w:start_w + section_W]
+    # # Select a random section from the resampled image
+    # start_h = np.random.randint(0, tile_ratio*new_H - section_H + 1)
+    # start_w = np.random.randint(0, tile_ratio*new_W - section_W + 1)
+    # start_d = np.random.randint(0, new_D - section_D + 1)
+    #
+    # section_origin = resampled_image_origin[
+    #                  start_d:start_d + section_D,
+    #                  start_h:start_h + section_H,
+    #                  start_w:start_w + section_W]
+    # section_noisy = resampled_image_noisy[
+    #                 start_d:start_d + section_D,
+    #                 start_h:start_h + section_H,
+    #                 start_w:start_w + section_W]
 
-    return section_origin, section_noisy
+    return resampled_image_origin, resampled_image_noisy
 
 
 def rearrange_3d_array_numpy(image_origin, image_noisy):

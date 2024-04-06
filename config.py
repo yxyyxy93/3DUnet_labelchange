@@ -69,7 +69,7 @@ mode = os.environ.get('MODE')
 if mode == "train":
     print("train mode")
     # Dataset address
-    image_dir = 'D:/pogo_work/results_mat/test_woven_[#090]8_(0-1defect)/sim_data_Inst_amplitude_805'
+    image_dirs = ['dataset/sim_data']
     label_dir = 'dataset/sim_struct'  # path to the 'sim_struct' directory
 
     batch_size = 32

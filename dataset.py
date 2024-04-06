@@ -41,7 +41,7 @@ class TrainValidImageDataset(Dataset):
         self.image_dirs = image_dirs
         self.label_dir = label_dir
         self.subdirs = []
-        self.max_samples =  max_samples     
+        self.max_samples = max_samples
         #    Create a mapping from dataset files to label files
         self.dataset_label_mapping = self._create_dataset_label_mapping()
 
@@ -71,7 +71,7 @@ class TrainValidImageDataset(Dataset):
                         full_dataset_file = os.path.join(dataset_path, dataset_file)
                         full_label_file = os.path.join(label_path, label_file[0]) if label_file else ""
                         mapping[full_dataset_file] = full_label_file
-                        
+
         # Print the size of the original dataset
         print(f"Original dataset size: {len(mapping)}")
         # cut the dataset to a specific size
@@ -96,12 +96,16 @@ class TrainValidImageDataset(Dataset):
             # print("experiement - defect free")
             # If label file does not exist, create an all-zero array with the same shape as image_noisy
             image_origin = np.zeros_like(image_noisy)
+
         # print_statistics(image_origin, "After Resize and Restore")
-        new_shape = [21, 21, 256]  # smaller size to match both dataset: image_noisy
-        section_shape = [16, 16, 256]  # random select a section
+        new_shape = [17, 17, 256]  # smaller size to match both dataset: image_noisy
+        section_shape = [32, 32, 256]  # random select a section
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
+        #
+        # image_origin = np.tile(image_origin, (1, 2, 2))
+        # image_noisy = np.tile(image_noisy, (1, 2, 2))
 
         # Option 1: Exact location + dilation
         if self.option_type == 1:
@@ -121,8 +125,8 @@ class TrainValidImageDataset(Dataset):
             raise ValueError("Invalid option type specified in config.")
 
         location_matrix = np.any(image_origin == 1, axis=0)  # Shape: [W, H] for debug
-
         image_noisy = imgproc.normalize(image_noisy)
+
         # Assuming image_noisy has shape [depth, height, width]
         depth, height, width = image_noisy.shape
         # Initialize an array of zeros with the same shape as image_noisy
@@ -192,8 +196,8 @@ class TestDataset(Dataset):
         image_noisy = read_csv_to_3d_array(dataset_file)
         image_origin = read_csv_to_3d_array(label_file)
         # print_statistics(image_origin, "After Resize and Restore")
-        new_shape = [21, 21, 256]  # smaller size to match both dataset: image_noisy
-        section_shape = [16, 16, 256]  # random select a section
+        new_shape = [17, 17, 256]  # smaller size to match both dataset: image_noisy
+        section_shape = [32, 32, 256]  # random select a section
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
@@ -410,8 +414,11 @@ def find_block_center(array, value=1):
     """
     coords = np.argwhere(array == value)
     if coords.size == 0:
-        raise ValueError(f"No element with value {value} found in the array.")
-    center = coords.mean(axis=0).astype(int)
+        print(f"No element with value {value} found in the array.")
+        center = (5, 8, 8)
+    else:
+        center = coords.mean(axis=0).astype(int)
+
     return center
 
 
@@ -451,7 +458,7 @@ if __name__ == "__main__":
     # from visualization import visualize_sample
     # ------------- visualize some samples
     # Prepare test dataset
-    test_dataset = TrainValidImageDataset(config.image_dir,
+    test_dataset = TrainValidImageDataset(config.image_dirs,
                                           config.label_dir,
                                           option_type=config.option_type,
                                           dilation_factors=config.dilation_factors)
@@ -460,10 +467,10 @@ if __name__ == "__main__":
     for data in test_loader:
         input = data['lr'].to(config.device)
         gt = data['gt'].to(config.device)
-        # Check if all elements in gt are zero
-        if torch.all(gt.eq(0)) | torch.all(gt.eq(1)):
-            print("Skipping as gt shows no defect")
-            continue
+        # # Check if all elements in gt are zero
+        # if torch.all(gt.eq(0)) | torch.all(gt.eq(1)):
+        #     print("Skipping as gt shows no defect")
+        #     continue
         print(input.shape)
         print(gt.shape)
-        # plot_dual_orthoslices(gt.squeeze().numpy(), input[:, 0, :, :, :].squeeze().numpy(), value=1)
+        plot_dual_orthoslices(gt.squeeze().numpy(), input[:, 0, :, :, :].squeeze().numpy(), value=1)

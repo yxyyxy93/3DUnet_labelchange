@@ -8,9 +8,11 @@ from utils_func.Read_CSV import read_csv_to_3d_array, save_3d_array_to_csv
 from utils_func.criteria import SSIM3D  # Assuming SSIM3D is defined in utils_func.criteria
 
 import os
+
 # Set mode for testing
 os.environ['MODE'] = 'test'
 import config
+import model_unet3d
 
 
 def load_checkpoint(model_load, checkpoint_path):
@@ -106,7 +108,7 @@ class SimpleCSVLoader:
 
         return image_noisy_with_depth
 
-    def segment_dataset(self, chunk_size: tuple = (16, 16, 256), step: int = 1) -> list:
+    def segment_dataset(self, chunk_size: tuple = (32, 32, 256), step: int = 1) -> list:
         """
             Segments the dataset into smaller chunks with a customizable step.
 
@@ -212,7 +214,8 @@ if __name__ == "__main__":
                             process_from_start=process_from_start,
                             step=5)
 
-    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
+    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
+                     "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
     save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
     # Function call
     process_ultrasound_data(fold_number=fold_number,
