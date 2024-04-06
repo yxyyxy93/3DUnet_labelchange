@@ -11,11 +11,10 @@ if __name__ == "__main__":
 
     # Set mode for testing
     os.environ['MODE'] = 'test'
-
     # Parameters
     fold_number = 1
     test_data_path = "dataset/test/_snr_100000.00_Inst_amplitude_090_1.csv"
-    sim_data_path = "D:/pogo_work/results_mat/test_woven_[#090]8_(0-1defect)"
+    sim_data_path = "D:/pogo_work/results_mat/test_woven_[#090]8_(0-1defect)_backup/400minusim_data_Inst_amplitude_805"
     process_from_start = True  # User-defined flag to choose processing mode
     step = 15
 
@@ -34,18 +33,15 @@ if __name__ == "__main__":
         flattened_data = extracted_data.flatten()
         # Store the flattened data in the new list
         flattened_data_list.append(flattened_data)
-
     print(f"Image data size: {extracted_data.shape}")
 
     # Base directory path
     all_files = []
     # First, collect all the relevant files to process
     for root, dirs, files in os.walk(sim_data_path):
-        path_parts = root.split(os.sep)
-        if len(path_parts) > len(sim_data_path.split(os.sep)) + 1:
-            for filename in files:
-                full_file_path = os.path.join(root, filename)
-                all_files.append(full_file_path)
+        for filename in files:
+            full_file_path = os.path.join(root, filename)
+            all_files.append(full_file_path)
 
     # Initialize a list to store results
     results = []
@@ -72,7 +68,7 @@ if __name__ == "__main__":
             # Append the path and average correlation coefficient to the results list
             results.append((full_file_path, average_corr_coeff))
         except Exception as e:
-            print(f"Error reading or processing file {os.path.basename(full_file_path)}: {e}")
+            print(f"Error reading or processing file {full_file_path}: {e}")
 
     # After processing all files, save the results to a CSV file
     results_file_path = 'correlation_results.csv'

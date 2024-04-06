@@ -1,16 +1,17 @@
-import os
-
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+import dataset
 from dataset import imgproc
 from utils_func.Read_CSV import read_csv_to_3d_array, save_3d_array_to_csv
-
-import dataset
 from utils_func.criteria import SSIM3D  # Assuming SSIM3D is defined in utils_func.criteria
-import model_unet3d
+
+import os
+# Set mode for testing
+os.environ['MODE'] = 'test'
 import config
+
 
 def load_checkpoint(model_load, checkpoint_path):
     # Load a checkpoint into the model
@@ -63,7 +64,7 @@ def reassemble_chunks(chunks: list, original_size: tuple = (256, 235, 300),
             chunk = chunks[chunk_idx].squeeze()
             reassembled_data[:, i:i + chunk_size[0], j:j + chunk_size[1]] += chunk
             count_matrix[:, i:i + chunk_size[0], j:j + chunk_size[1]] += 1
-            
+
     # Normalize reassembled_data by count_matrix, safely handling zeros
     count_matrix_with_no_zeros = np.where(count_matrix == 0, 1, count_matrix)
     normalized_reassembled_data = reassembled_data / count_matrix_with_no_zeros
@@ -152,11 +153,11 @@ def process_data(model, segment_data, batch_size, device):
     return segment_output
 
 
-def process_ultrasound_data(fold_number=1, model_filename="d_best.pth.tar", 
-                            test_data_path="/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude.csv", 
-                            save_path="/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/exp_test_results.csv", 
+def process_ultrasound_data(fold_number=1, model_filename="d_best.pth.tar",
+                            test_data_path="/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude.csv",
+                            save_path="/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/exp_test_results.csv",
                             process_from_start=True,
-                            step = 1):
+                            step=1):
     # Set mode for testing
     os.environ['MODE'] = 'test'
     if process_from_start:
@@ -185,16 +186,13 @@ def process_ultrasound_data(fold_number=1, model_filename="d_best.pth.tar",
     # Assuming original data was in (height, width, depth), revert the reassembled data to this order
     reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
     save_3d_array_to_csv(reassembled_data, save_path)
-    
+
 
 if __name__ == "__main__":
     # Initialize model
     import numpy as np
-    import os
     import model_unet3d
 
-    # Set mode for testing
-    os.environ['MODE'] = 'test'
     import config
 
     # Parameters
@@ -205,25 +203,21 @@ if __name__ == "__main__":
     save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_1_{modified_results_dir}.csv"
     process_from_start = True  # User-defined flag to choose processing mode
     step = 5
-    
+
     # Function call
-    process_ultrasound_data(fold_number=fold_number, 
-                            model_filename=model_filename, 
-                            test_data_path=test_data_path, 
-                            save_path=save_path, 
+    process_ultrasound_data(fold_number=fold_number,
+                            model_filename=model_filename,
+                            test_data_path=test_data_path,
+                            save_path=save_path,
                             process_from_start=process_from_start,
-                            step = 5)
-                            
+                            step=5)
+
     test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
     save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
     # Function call
-    process_ultrasound_data(fold_number=fold_number, 
-                            model_filename=model_filename, 
-                            test_data_path=test_data_path, 
-                            save_path=save_path, 
+    process_ultrasound_data(fold_number=fold_number,
+                            model_filename=model_filename,
+                            test_data_path=test_data_path,
+                            save_path=save_path,
                             process_from_start=process_from_start,
-                            step = 5)
-                            
-                            
-                            
-                            
+                            step=5)

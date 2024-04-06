@@ -69,13 +69,8 @@ mode = os.environ.get('MODE')
 if mode == "train":
     print("train mode")
     # Dataset address
-    image_dirs = [
-    #'/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/sim_data_810', 
-    #'/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/sim_data_810', 
-    #'/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/sim_data_805',
-    '/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/sim_data_815'
-    ]  # path to the 'sim_data' directory
-    label_dir = '/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/sim_struct'  # path to the 'sim_struct' directory
+    image_dir = 'D:/pogo_work/results_mat/test_woven_[#090]8_(0-1defect)/sim_data_Inst_amplitude_805'
+    label_dir = 'dataset/sim_struct'  # path to the 'sim_struct' directory
 
     batch_size = 32
     num_workers = 4
@@ -111,5 +106,5 @@ if mode == "train":
 elif mode == "test":
     print("testing mode")
     # Test data address To be modified ...
-    image_dir = r'dataset/test/sim_data'  # path to the 'sim_data' directory
-    label_dir = r'dataset/test/sim_struct'  # path to the 'sim_struct' directory
+    image_dir = r'dataset/sim_data'  # path to the 'sim_data' directory
+    label_dir = r'dataset/sim_struct'  # path to the 'sim_struct' directory

@@ -4,9 +4,8 @@ Paper URL: https://arxiv.org/abs/1606.06650
 Author: Amir Aghdam
 """
 
-from torch import nn
 import torch
-import torch.nn.functional as F
+import torch.nn as nn
 
 
 class Conv3DBlock(nn.Module):
@@ -100,8 +99,10 @@ class UNet3D(nn.Module):
     :return -> Tensor
     """
 
-    def __init__(self, in_channels, num_classes, level_channels=[64, 128, 256], bottleneck_channel=512) -> None:
+    def __init__(self, in_channels, num_classes, level_channels=None, bottleneck_channel=512) -> None:
         super(UNet3D, self).__init__()
+        if level_channels is None:
+            level_channels = [64, 128, 256]
         level_1_chnls, level_2_chnls, level_3_chnls = level_channels[0], level_channels[1], level_channels[2]
         self.a_block1 = Conv3DBlock(in_channels=in_channels, out_channels=level_1_chnls)
         self.a_block2 = Conv3DBlock(in_channels=level_1_chnls, out_channels=level_2_chnls)
@@ -128,11 +129,110 @@ class UNet3D(nn.Module):
         return out
 
 
+# *************************************************
+class AttentionBlock3D(nn.Module):
+    def __init__(self, F_g, F_l, n_coefficients, F_int=None):
+        """
+        Initializes the 3D Attention Block.
+        :param F_g: Number of feature maps in the gating signal.
+        :param F_l: Number of feature maps in the corresponding encoder layer (skip connection).
+        :param n_coefficients: Intermediate number of feature maps.
+        :param F_int: Number of feature maps for intermediate representations. If None, uses n_coefficients.
+        """
+        super(AttentionBlock3D, self).__init__()
+        if F_int is None:
+            F_int = n_coefficients
+        # Upsampling block for the gating signal
+        self.up = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='trilinear', align_corners=True),
+            nn.Conv3d(F_g, F_int, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm3d(F_int),
+            nn.ReLU(inplace=True)
+        )
+
+        self.W_x = nn.Sequential(
+            nn.Conv3d(F_l, F_int, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm3d(F_int)
+        )
+
+        self.psi = nn.Sequential(
+            nn.Conv3d(F_int, 1, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm3d(1),
+            nn.Sigmoid()
+        )
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, g, skip_connet):
+        """
+                    Forward pass of the attention block.
+                    :param g: Gating signal.
+                    :param x: Skip connection features.
+                    :return: Output of the attention block.
+                    """
+        g_up = self.up(g)  # Upsample gating signal to match x's spatial dimensions
+
+        g1 = self.W_x(g_up)
+        x1 = self.W_x(skip_connet)
+        psi = self.relu(g1 + x1)  # Combine the transformed inputs
+        psi = self.psi(psi)  # Attention coefficients
+        out = skip_connet * psi  # Reweight skip connection by attention coefficients
+        return out
+
+
+class attention_UNet3D(nn.Module):
+    def __init__(self, in_channels, num_classes, level_channels=None, bottleneck_channel=512):
+        super(attention_UNet3D, self).__init__()
+        if level_channels is None:
+            level_channels = [64, 128, 256]
+
+        if level_channels is None:
+            level_channels = [64, 128, 256]
+        level_1_chnls, level_2_chnls, level_3_chnls = level_channels[0], level_channels[1], level_channels[2]
+        self.a_block1 = Conv3DBlock(in_channels=in_channels, out_channels=level_1_chnls)
+        self.a_block2 = Conv3DBlock(in_channels=level_1_chnls, out_channels=level_2_chnls)
+        self.a_block3 = Conv3DBlock(in_channels=level_2_chnls, out_channels=level_3_chnls)
+        self.bottleNeck = Conv3DBlock(in_channels=level_3_chnls, out_channels=bottleneck_channel, bottleneck=True)
+        self.s_block3 = UpConv3DBlock(in_channels=bottleneck_channel, res_channels=level_3_chnls)
+        self.s_block2 = UpConv3DBlock(in_channels=level_3_chnls, res_channels=level_2_chnls)
+        self.s_block1 = UpConv3DBlock(in_channels=level_2_chnls, res_channels=level_1_chnls, num_classes=num_classes,
+                                      last_layer=True)
+
+        self.att_block3 = AttentionBlock3D(bottleneck_channel, level_3_chnls, level_3_chnls // 2, F_int=level_3_chnls)
+        self.att_block2 = AttentionBlock3D(level_3_chnls, level_2_chnls, level_2_chnls // 2, F_int=level_2_chnls)
+        self.att_block1 = AttentionBlock3D(level_2_chnls, level_1_chnls, level_1_chnls // 2, F_int=level_1_chnls)
+
+    def forward(self, input):
+
+        # Analysis path forward feed
+        out, residual_level1 = self.a_block1(input)
+        out, residual_level2 = self.a_block2(out)
+        out, residual_level3 = self.a_block3(out)
+        out, _ = self.bottleNeck(out)
+
+        # Apply attention to the skip connections and up-sample
+        # Synthesis path
+        att_residual_level3 = self.att_block3(out, residual_level3)
+        out = self.s_block3(out, att_residual_level3)
+
+        att_residual_level2 = self.att_block2(out, residual_level2)
+        out = self.s_block2(out, att_residual_level2)
+
+        att_residual_level1 = self.att_block1(out, residual_level1)
+        out = self.s_block1(out, att_residual_level1)
+
+        out = torch.sigmoid(out)  # Assuming binary segmentation mask output
+
+        return out
+
+
+# ********************************************************************************
+
 if __name__ == '__main__':
     import test  # for debug
     from utils_func import criteria
 
-    model = UNet3D(in_channels=2, num_classes=1)
+    model = attention_UNet3D(in_channels=2, num_classes=1)
     # Prepare test dataset
     test_loader = test.load_test_dataset()
     for data in test_loader:
