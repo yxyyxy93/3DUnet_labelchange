@@ -1,11 +1,70 @@
 """
 3D U-Net: Learning Dense Volumetric Segmentation from Sparse Annotation
 Paper URL: https://arxiv.org/abs/1606.06650
-Author: Amir Aghdam
 """
 
 import torch
 import torch.nn as nn
+
+
+class DilatedConv3DBlock(nn.Module):
+    """
+    A convolutional block that includes dilated convolutions to increase receptive field.
+    """
+
+    def __init__(self, in_channels, out_channels, kernel_size=(3, 3, 3), padding=(1, 1, 1), dilation=(1, 1, 1),
+                 bottleneck=False):
+        super(DilatedConv3DBlock, self).__init__()
+        # Adjust padding based on dilation to maintain output dimensions
+        padding = tuple([k // 2 * d for k, d in zip(kernel_size, dilation)])
+        self.conv1 = nn.Conv3d(in_channels, out_channels // 2, kernel_size=kernel_size, padding=padding,
+                               dilation=dilation)
+        self.bn1 = nn.BatchNorm3d(out_channels // 2)
+        self.conv2 = nn.Conv3d(out_channels // 2, out_channels, kernel_size=kernel_size, padding=padding,
+                               dilation=dilation)
+        self.bn2 = nn.BatchNorm3d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+        self.bottleneck = bottleneck
+        if not bottleneck:
+            self.pooling = nn.MaxPool3d(kernel_size=(2, 2, 2), stride=(2, 2, 2))
+
+    def forward(self, input):
+        res = self.relu(self.bn1(self.conv1(input)))
+        res = self.relu(self.bn2(self.conv2(res)))
+        out = None
+        if not self.bottleneck:
+            out = self.pooling(res)
+        else:
+            out = res
+        return out, res
+
+
+class DilatedUNet3D(nn.Module):
+    """
+    The 3D UNet model with dilated convolutions, designed to increase the receptive field specifically in the depth dimension.
+    """
+
+    def __init__(self, in_channels, num_classes, level_channels=None, bottleneck_channel=512):
+        super(DilatedUNet3D, self).__init__()
+        if level_channels is None:
+            level_channels = [64, 128, 256]
+        self.a_block1 = DilatedConv3DBlock(in_channels, level_channels[0], dilation=(1, 1, 1))
+        self.a_block2 = DilatedConv3DBlock(level_channels[0], level_channels[1], dilation=(2, 1, 1))
+        self.a_block3 = DilatedConv3DBlock(level_channels[1], level_channels[2], dilation=(4, 1, 1))
+        self.bottleNeck = DilatedConv3DBlock(level_channels[2], bottleneck_channel, dilation=(8, 1, 1), bottleneck=True)
+        self.s_block3 = UpConv3DBlock(bottleneck_channel, level_channels[2])
+        self.s_block2 = UpConv3DBlock(level_channels[2], level_channels[1])
+        self.s_block1 = UpConv3DBlock(level_channels[1], level_channels[0], num_classes=num_classes, last_layer=True)
+
+    def forward(self, x):
+        x, skip1 = self.a_block1(x)
+        x, skip2 = self.a_block2(x)
+        x, skip3 = self.a_block3(x)
+        x, _ = self.bottleNeck(x)
+        x = self.s_block3(x, skip3)
+        x = self.s_block2(x, skip2)
+        x = self.s_block1(x, skip1)
+        return torch.sigmoid(x)
 
 
 class Conv3DBlock(nn.Module):
@@ -20,13 +79,13 @@ class Conv3DBlock(nn.Module):
     :return -> Tensor
     """
 
-    def __init__(self, in_channels, out_channels, bottleneck=False) -> None:
+    def __init__(self, in_channels, out_channels, kernel_size=(3, 3, 3), padding=(1, 1, 1), bottleneck=False) -> None:
         super(Conv3DBlock, self).__init__()
-        self.conv1 = nn.Conv3d(in_channels=in_channels, out_channels=out_channels // 2, kernel_size=(3, 3, 3),
-                               padding=1)
+        self.conv1 = nn.Conv3d(in_channels=in_channels, out_channels=out_channels // 2,
+                               kernel_size=kernel_size, padding=padding)
         self.bn1 = nn.BatchNorm3d(num_features=out_channels // 2)
-        self.conv2 = nn.Conv3d(in_channels=out_channels // 2, out_channels=out_channels, kernel_size=(3, 3, 3),
-                               padding=1)
+        self.conv2 = nn.Conv3d(in_channels=out_channels // 2, out_channels=out_channels,
+                               kernel_size=kernel_size, padding=padding)
         self.bn2 = nn.BatchNorm3d(num_features=out_channels)
         self.relu = nn.ReLU()
         self.bottleneck = bottleneck
@@ -62,14 +121,14 @@ class UpConv3DBlock(nn.Module):
         super(UpConv3DBlock, self).__init__()
         assert (last_layer == False and num_classes is None) or (
                 last_layer == True and num_classes is not None), 'Invalid arguments'
-        self.upconv1 = nn.ConvTranspose3d(in_channels=in_channels, out_channels=in_channels, kernel_size=(2, 2, 2),
-                                          stride=2)
+        self.upconv1 = nn.ConvTranspose3d(in_channels=in_channels, out_channels=in_channels,
+                                          kernel_size=(2, 2, 2), stride=2)
         self.relu = nn.ReLU()
         self.bn = nn.BatchNorm3d(num_features=in_channels // 2)
         self.conv1 = nn.Conv3d(in_channels=in_channels + res_channels, out_channels=in_channels // 2,
                                kernel_size=(3, 3, 3), padding=(1, 1, 1))
-        self.conv2 = nn.Conv3d(in_channels=in_channels // 2, out_channels=in_channels // 2, kernel_size=(3, 3, 3),
-                               padding=(1, 1, 1))
+        self.conv2 = nn.Conv3d(in_channels=in_channels // 2, out_channels=in_channels // 2,
+                               kernel_size=(3, 3, 3), padding=(1, 1, 1))
         self.last_layer = last_layer
         if last_layer:
             self.conv3 = nn.Conv3d(in_channels=in_channels // 2, out_channels=num_classes, kernel_size=(1, 1, 1))
@@ -92,7 +151,7 @@ class UNet3D(nn.Module):
     :param in_channels -> number of input channels
     :param num_classes -> specifies the number of output channels or masks for different classes
     :param level_channels -> the number of channels at each level (count top-down)
-    :param bottleneck_channel -> the number of bottleneck channels 
+    :param bottleneck_channel -> the number of bottleneck channels
     :param device -> the device on which to run the model
     -- forward()
     :param input -> input Tensor
@@ -113,7 +172,7 @@ class UNet3D(nn.Module):
         self.s_block1 = UpConv3DBlock(in_channels=level_2_chnls, res_channels=level_1_chnls, num_classes=num_classes,
                                       last_layer=True)
 
-    def forward(self, input, desired_depth=168):
+    def forward(self, input):
         # Analysis path forward feed
         out, residual_level1 = self.a_block1(input)
         out, residual_level2 = self.a_block2(out)
@@ -127,6 +186,68 @@ class UNet3D(nn.Module):
         out = torch.sigmoid(out)
 
         return out
+
+
+class ReducedUNet3D(nn.Module):
+    def __init__(self, in_channels, num_classes, level_channels=None, bottleneck_channel=256):
+        super(ReducedUNet3D, self).__init__()
+        if level_channels is None:
+            level_channels = [32, 64, 128]  # Adjusted to include correct channel numbers
+        level_1_chnls, level_2_chnls, level_3_chnls = level_channels[0], level_channels[1], level_channels[2]
+
+        # Analysis Path
+        self.a_block1 = Conv3DBlock(in_channels=in_channels, out_channels=level_1_chnls)
+        self.a_block2 = Conv3DBlock(in_channels=level_1_chnls, out_channels=level_2_chnls)
+        self.a_block3 = Conv3DBlock(in_channels=level_2_chnls, out_channels=level_3_chnls)
+
+        # Bottleneck
+        self.bottleNeck = Conv3DBlock(in_channels=level_3_chnls, out_channels=bottleneck_channel, bottleneck=True)
+
+        # Synthesis Path
+        self.s_block3 = UpConv3DBlock(in_channels=bottleneck_channel, res_channels=level_3_chnls)
+        self.s_block2 = UpConv3DBlock(in_channels=level_3_chnls, res_channels=level_2_chnls)
+        self.s_block1 = UpConv3DBlock(in_channels=level_2_chnls, res_channels=level_1_chnls, num_classes=num_classes,
+                                      last_layer=True)
+
+    def forward(self, input):
+        out, residual_level1 = self.a_block1(input)
+        out, residual_level2 = self.a_block2(out)
+        out, residual_level3 = self.a_block3(out)
+        out, _ = self.bottleNeck(out)
+
+        # Reusing the residuals as skip connections
+        out = self.s_block3(out, residual_level3)
+        out = self.s_block2(out, residual_level2)
+        out = self.s_block1(out, residual_level1)
+
+        out = torch.sigmoid(out)
+        return out
+
+
+class Unequal_UNet3D(nn.Module):
+    def __init__(self, in_channels, num_classes):
+        super(Unequal_UNet3D, self).__init__()
+        self.a_block1 = Conv3DBlock(in_channels, 64, kernel_size=(9, 3, 3), padding=(4, 1, 1))
+        self.a_block2 = Conv3DBlock(64, 128, kernel_size=(5, 3, 3), padding=(2, 1, 1))
+        self.a_block3 = Conv3DBlock(128, 256, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+
+        self.bottleNeck = Conv3DBlock(256, 512, kernel_size=(3, 3, 3), padding=(1, 1, 1), bottleneck=True)
+
+        self.s_block3 = UpConv3DBlock(512, 256)
+        self.s_block2 = UpConv3DBlock(256, 128)
+        self.s_block1 = UpConv3DBlock(128, 64, num_classes=num_classes, last_layer=True)
+
+    def forward(self, x):
+        x, skip1 = self.a_block1(x)
+        x, skip2 = self.a_block2(x)
+        x, skip3 = self.a_block3(x)
+        x, _ = self.bottleNeck(x)
+
+        x = self.s_block3(x, skip3)
+        x = self.s_block2(x, skip2)
+        x = self.s_block1(x, skip1)
+
+        return torch.sigmoid(x)
 
 
 # *************************************************
@@ -232,7 +353,7 @@ if __name__ == '__main__':
     import test  # for debug
     from utils_func import criteria
 
-    model = attention_UNet3D(in_channels=2, num_classes=1)
+    model = DilatedUNet3D(in_channels=2, num_classes=1)
     # Prepare test dataset
     test_loader = test.load_test_dataset()
     for data in test_loader:

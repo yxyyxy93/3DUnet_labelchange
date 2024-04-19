@@ -99,7 +99,7 @@ class TrainValidImageDataset(Dataset):
 
         # print_statistics(image_origin, "After Resize and Restore")
         new_shape = [17, 17, 256]  # smaller size to match both dataset: image_noisy
-        section_shape = [32, 32, 256]  # random select a section
+        section_shape = [16, 16, 256]  # random select a section
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
@@ -197,7 +197,7 @@ class TestDataset(Dataset):
         image_origin = read_csv_to_3d_array(label_file)
         # print_statistics(image_origin, "After Resize and Restore")
         new_shape = [17, 17, 256]  # smaller size to match both dataset: image_noisy
-        section_shape = [32, 32, 256]  # random select a section
+        section_shape = [16, 16, 256]  # random select a section
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
