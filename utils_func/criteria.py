@@ -110,11 +110,12 @@ class SSIM3D(nn.Module):
 
 # -------------- loss functions
 class DiceLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, smooth=1e4):
         super(DiceLoss, self).__init__()
+        self.smooth = smooth
 
-    def forward(self, inputs, targets, smooth=1e4):
-        # Apply sigmoid to the inputs
+    def forward(self, inputs, targets):
+        # no need to apply sigmoid to the inputs
         # inputs = torch.sigmoid(inputs)
 
         # Flatten label and prediction tensors
@@ -122,9 +123,34 @@ class DiceLoss(nn.Module):
         targets = targets.reshape(-1)
 
         intersection = (inputs * targets).sum()
-        dice = (2. * intersection + smooth) / (inputs.sum() + targets.sum() + smooth)
+        dice = (2. * intersection + self.smooth) / (inputs.sum() + targets.sum() + self.smooth)
 
         return 1 - dice
+
+
+class WeightedBCELoss(nn.Module):
+    def __init__(self, pos_weight=1.0):
+        super(WeightedBCELoss, self).__init__()
+        self.pos_weight = pos_weight
+
+    def forward(self, inputs, targets):
+        # No need to apply sigmoid since binary_cross_entropy_with_logits includes it
+        weights = torch.ones_like(targets) * (self.pos_weight * targets + 1.0 * (1 - targets))
+        return F.binary_cross_entropy_with_logits(inputs, targets, weight=weights)
+
+
+class BCE_DiceLoss(nn.Module):
+    def __init__(self, pos_weight=1.0, alpha=2.0/2.0, smooth=1e2):
+        super(BCE_DiceLoss, self).__init__()
+        self.smooth = smooth
+        self.dice_loss = DiceLoss(smooth=smooth)
+        self.bce_loss = WeightedBCELoss(pos_weight=pos_weight)
+        self.alpha = alpha
+
+    def forward(self, inputs, targets):
+        dice = self.dice_loss(inputs, targets)
+        bce = self.bce_loss(inputs, targets)
+        return self.alpha * dice + (1 - self.alpha) * bce
 
 
 class CombinedLoss(nn.Module):
@@ -246,6 +272,10 @@ if __name__ == "__main__":
     batch_size = 4
     predictions = torch.randn(batch_size, 1, 168, 16, 16)  # Model's raw output (logits)
     targets = torch.randint(0, 2, (batch_size, 1, 168, 16, 16)).float()  # Binary targets
+
+    # Assuming 'inputs' are the logits from your model and 'targets' are your ground truth segmentation masks
+    loss_func = BCE_DiceLoss(pos_weight=10.0, alpha=0.7)  # Adjust based on your dataset
+    loss = loss_func(predictions, targets)
 
     # Create an instance of the DiceLoss
     dice_loss = DiceLoss()

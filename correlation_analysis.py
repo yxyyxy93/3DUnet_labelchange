@@ -13,8 +13,8 @@ if __name__ == "__main__":
     os.environ['MODE'] = 'test'
     # Parameters
     fold_number = 1
-    test_data_path = "dataset/test/_snr_100000.00_Inst_amplitude_090_1.csv"
-    sim_data_path = "D:/pogo_work/results_mat/test_woven_[#090]8_(0-1defect)_backup/400minusim_data_Inst_amplitude_805"
+    test_data_path = "dataset/test/_snr_100000.00_Inst_amplitude_090_2.csv"
+    sim_data_path = "D:/pogo_work/results_mat/test_woven_[#090]8_(0-1defect)/sim_data_Inst_amplitude_825"
     process_from_start = True  # User-defined flag to choose processing mode
     step = 15
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
             corr_coeffs = []
             for exp_data in flattened_data_list[::100]:
                 flattened_image_data = image_data.flatten()
-                corr_matrix = np.corrcoef(exp_data/max(exp_data), flattened_image_data/max(flattened_image_data))
+                corr_matrix = np.corrcoef(exp_data / max(exp_data), flattened_image_data / max(flattened_image_data))
                 corr_coeff = corr_matrix[0, 1]
                 corr_coeffs.append(corr_coeff)
             # Calculate the average correlation coefficient
@@ -69,6 +69,11 @@ if __name__ == "__main__":
             results.append((full_file_path, average_corr_coeff))
         except Exception as e:
             print(f"Error reading or processing file {full_file_path}: {e}")
+
+    # Calculate and print the overall average correlation coefficient
+    all_corr_coeffs = [result[1] for result in results]
+    overall_average_corr_coeff = np.mean(all_corr_coeffs)
+    print(f"Overall Average Correlation Coefficient: {overall_average_corr_coeff}")
 
     # After processing all files, save the results to a CSV file
     results_file_path = 'correlation_results.csv'

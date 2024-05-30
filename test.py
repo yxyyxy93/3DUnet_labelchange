@@ -155,11 +155,15 @@ def process_data(model, segment_data, batch_size, device):
     return segment_output
 
 
-def process_ultrasound_data(fold_number=1, model_filename="d_best.pth.tar",
-                            test_data_path="/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude.csv",
-                            save_path="/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/exp_test_results.csv",
+def process_ultrasound_data(fold_number=1,
+                            model_filename="d_best.pth.tar",
+                            test_data_path="/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
+                                           "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude.csv",
+                            save_path="/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
+                                      "#090]8_0-1defect/test/exp_test_results.csv",
                             process_from_start=True,
-                            step=1):
+                            step=1,
+                            label_path=None):
     # Set mode for testing
     os.environ['MODE'] = 'test'
     if process_from_start:
@@ -171,7 +175,7 @@ def process_ultrasound_data(fold_number=1, model_filename="d_best.pth.tar",
         # Load and preprocess test data
         testdata = SimpleCSVLoader(test_data_path)
         testdata.load_and_preprocess()
-        segment_data, original_size = testdata.segment_dataset(chunk_size=(16, 16), step=step)
+        segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=step)
         # Define batch size
         batch_size = 32
         # Process data
@@ -183,26 +187,40 @@ def process_ultrasound_data(fold_number=1, model_filename="d_best.pth.tar",
         loaded_data = np.load('temp_list.npz')
         segment_output = [loaded_data[key] for key in loaded_data]
     # Reassemble and save the data
-    print(original_size)
-    reassembled_data = reassemble_chunks(segment_output, original_size=original_size, step=step)
+    reassembled_data = reassemble_chunks(segment_output, original_size=original_size, chunk_size=(17, 17, 256),
+                                         step=step)
     # Assuming original data was in (height, width, depth), revert the reassembled data to this order
     reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
     save_3d_array_to_csv(reassembled_data, save_path)
+
+    if label_path is not None:
+        # Load label (ground truth) for the experiment
+        label = read_csv_to_3d_array(label_path)
+        criterion = getattr(criteria, config.loss_function)()
+        criterion = criterion.to(device=config.device)
+        val_crite = getattr(criteria, config.val_function)()
+        val_crite = val_crite.to(device=config.device)
+        loss = criterion(torch.tensor(reassembled_data).to(config.device), torch.tensor(label).to(config.device))
+        score = val_crite(torch.tensor(reassembled_data).to(config.device), torch.tensor(label).to(config.device))
+
+        print(f"Final Loss: {loss.item()}, Final Score: {score.item()}")
 
 
 if __name__ == "__main__":
     # Initialize model
     import numpy as np
     import model_unet3d
+    from utils_func import criteria
 
     import config
 
     # Parameters
     fold_number = 1
     model_filename = "d_best.pth.tar"
-    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_1.csv"
+    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
+                     "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
     modified_results_dir = config.results_dir[8:]
-    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_1_{modified_results_dir}.csv"
+    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
     process_from_start = True  # User-defined flag to choose processing mode
     step = 5
 
@@ -211,16 +229,29 @@ if __name__ == "__main__":
                             model_filename=model_filename,
                             test_data_path=test_data_path,
                             save_path=save_path,
-                            process_from_start=process_from_start,
-                            step=5)
 
-    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
-                     "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
-    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
-    # Function call
-    process_ultrasound_data(fold_number=fold_number,
-                            model_filename=model_filename,
-                            test_data_path=test_data_path,
-                            save_path=save_path,
                             process_from_start=process_from_start,
-                            step=5)
+                            step=5,
+                            label_path=config.label_exp_dir)
+
+    AST_output = read_csv_to_3d_array("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
+                                      "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2_STEG_9dB.csv")
+    # Read the label data
+    label = read_csv_to_3d_array(config.label_exp_dir)
+    # Convert AST_output from dB to ratio
+    AST_output_ratio = 10 ** (AST_output / 20)
+    # Normalize AST_output_ratio to the range 0-1
+    AST_output_min = AST_output_ratio.min()
+    AST_output_max = AST_output_ratio.max()
+    AST_output_normalized = (AST_output_ratio - AST_output_min) / (AST_output_max - AST_output_min)
+    # Convert normalized AST_output and label to tensors
+    AST_output_tensor = torch.tensor(AST_output_normalized, dtype=torch.float32).to(config.device)
+    label_tensor = torch.tensor(label, dtype=torch.float32).to(config.device)
+    # Define the criterion and validation criterion
+    criterion = getattr(criteria, config.loss_function)().to(config.device)
+    val_crite = getattr(criteria, config.val_function)().to(config.device)
+    # Compute loss and score
+    loss = criterion(AST_output_tensor, label_tensor)
+    score = val_crite(AST_output_tensor, label_tensor)
+
+    print(f"Final Loss of AST: {loss.item()}, Final Score of AST: {score.item()}")

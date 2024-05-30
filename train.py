@@ -34,7 +34,7 @@ import test
 
 def main():
     # Load datasets for each fold
-    dataloaders_per_fold = load_dataset(num_folds=5)
+    dataloaders_per_fold = load_dataset(num_folds=10)
     # Initialize the number of training epochs
     start_epoch = 0
     print("Load all datasets successfully.")
@@ -162,11 +162,12 @@ def main():
     fold_number = 1
     model_filename = "d_best.pth.tar"
     process_from_start = True  # User-defined flag to choose processing mode
-    step = 1
+    step = 5
     # Remove the first 8 characters from config.results_dir
     modified_results_dir = config.results_dir[8:]
     # Function call    
-    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_1.csv"
+    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
+                     "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_1.csv"
     save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_1_{modified_results_dir}.csv"
     test.process_ultrasound_data(fold_number=fold_number,
                                  model_filename=model_filename,
@@ -174,7 +175,8 @@ def main():
                                  save_path=save_path,
                                  process_from_start=process_from_start,
                                  step=step)
-    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
+    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
+                     "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
     save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
     test.process_ultrasound_data(fold_number=fold_number,
                                  model_filename=model_filename,
@@ -185,7 +187,7 @@ def main():
     # **************************************************
 
 
-def load_dataset(num_folds=5) -> list:
+def load_dataset(num_folds=10) -> list:
     # Load the full dataset
     full_dataset = TrainValidImageDataset(image_dirs=config.image_dirs,
                                           label_dir=config.label_dir,
@@ -198,7 +200,8 @@ def load_dataset(num_folds=5) -> list:
 
     # Calculate the size of each fold
     fold_size = dataset_size // num_folds
-
+    print(f"---------------test----------------------")
+    print(f"size of fold {fold_size}")
     dataloaders_per_fold = []
 
     for fold in range(num_folds):

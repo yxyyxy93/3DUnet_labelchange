@@ -32,7 +32,7 @@ np.random.seed(0)
 device = show_cuda_gpu_info()
 
 # Model arch config
-input_dim = 2
+input_dim = 1
 hidden_dim = 64
 kernel_size = (3, 3)
 output_dim = 1  # 2 or more classes
@@ -50,13 +50,14 @@ val_function = "PixelAccuracy"
 exp_name = d_arch_name + "_" + loss_function
 # choose exact position or shadow effect, define the dilation
 option_type = 2  # 2 for shadowing and 1 for dilation
-dilation_factors = (1, 1, 1)
+dilation_factors = [19, 0, 0]
 
 # samples 
 max_samples = 1000
 
 # Constructing the path
 results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_2024-03-10")
+label_exp_dir = '/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/true_labels.csv'
 
 # How many iterations to print the training result
 train_print_frequency = 2

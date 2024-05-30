@@ -184,21 +184,51 @@ def dilate_3d_array(array_3d, dilation_factors):
 
     Args:
     array_3d (numpy.ndarray): The input 3D array to be dilated.
-    dilation_factors (tuple): A tuple of three integers representing the dilation factors for each direction (z, y, x).
+    dilation_factors (tuple or list): A tuple or list of three integers representing the dilation factors for each direction (z, y, x).
 
     Returns:
     numpy.ndarray: The dilated 3D array with values as 0 and 1.
     """
-    # Create a structuring element based on dilation factors
+    # Convert dilation_factors to a numpy array if it's not already
+    if not isinstance(dilation_factors, np.ndarray):
+        dilation_factors = np.array(dilation_factors)
+
+    # Ensure the factors array has at least one unit in each dimension
+    dilation_factors = np.maximum(dilation_factors, 1)
+
+    # Create a structuring element based on the dilation factors
     structuring_element = np.ones(dilation_factors, dtype=bool)
 
-    # Apply dilation
-    dilated_array = binary_dilation(array_3d, structure=structuring_element)
+    # Prepare the output array
+    dilated_array = np.zeros_like(array_3d)
 
-    # Convert boolean array to integer array (True to 1, False to 0)
-    dilated_array = dilated_array.astype(int)
+    # Get the shape of the input array and the structuring element
+    input_shape = array_3d.shape
+    structure_shape = structuring_element.shape
+    structure_center = (structure_shape[0] // 2, structure_shape[1] // 2, structure_shape[2] // 2)
 
-    return dilated_array
+    # Iterate over each element in the input array
+    for z in range(input_shape[0]):
+        for y in range(input_shape[1]):
+            for x in range(input_shape[2]):
+                # Apply the structuring element if the current element is 1
+                if array_3d[z, y, x] == 1:
+                    # Determine the bounds of the neighborhood
+                    z_start = max(0, z - structure_center[0])
+                    z_end = min(input_shape[0], z + structure_center[0] + 1)
+                    y_start = max(0, y - structure_center[1])
+                    y_end = min(input_shape[1], y + structure_center[1] + 1)
+                    x_start = max(0, x - structure_center[2])
+                    x_end = min(input_shape[2], x + structure_center[2] + 1)
+
+                    # Set the corresponding region in the output array
+                    dilated_array[z_start:z_end, y_start:y_end, x_start:x_end] |= structuring_element[
+                        (z_start - z + structure_center[0]):(z_end - z + structure_center[0]),
+                        (y_start - y + structure_center[1]):(y_end - y + structure_center[1]),
+                        (x_start - x + structure_center[2]):(x_end - x + structure_center[2])
+                    ]
+
+    return dilated_array.astype(int)
 
 
 if __name__ == "__main__":

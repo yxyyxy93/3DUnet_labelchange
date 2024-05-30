@@ -48,10 +48,12 @@ class DilatedUNet3D(nn.Module):
         super(DilatedUNet3D, self).__init__()
         if level_channels is None:
             level_channels = [64, 128, 256]
-        self.a_block1 = DilatedConv3DBlock(in_channels, level_channels[0], dilation=(1, 1, 1))
-        self.a_block2 = DilatedConv3DBlock(level_channels[0], level_channels[1], dilation=(2, 1, 1))
-        self.a_block3 = DilatedConv3DBlock(level_channels[1], level_channels[2], dilation=(4, 1, 1))
-        self.bottleNeck = DilatedConv3DBlock(level_channels[2], bottleneck_channel, dilation=(8, 1, 1), bottleneck=True)
+        self.a_block1 = DilatedConv3DBlock(in_channels, level_channels[0], kernel_size=(3, 3, 3), dilation=(1, 1, 1))
+        self.a_block2 = DilatedConv3DBlock(level_channels[0], level_channels[1], kernel_size=(3, 3, 3),
+                                           dilation=(2, 1, 1))
+        self.a_block3 = DilatedConv3DBlock(level_channels[1], level_channels[2], kernel_size=(3, 3, 3),
+                                           dilation=(2, 1, 1))
+        self.bottleNeck = DilatedConv3DBlock(level_channels[2], bottleneck_channel, dilation=(2, 1, 1), bottleneck=True)
         self.s_block3 = UpConv3DBlock(bottleneck_channel, level_channels[2])
         self.s_block2 = UpConv3DBlock(level_channels[2], level_channels[1])
         self.s_block1 = UpConv3DBlock(level_channels[1], level_channels[0], num_classes=num_classes, last_layer=True)
@@ -224,30 +226,128 @@ class ReducedUNet3D(nn.Module):
         return out
 
 
-class Unequal_UNet3D(nn.Module):
-    def __init__(self, in_channels, num_classes):
-        super(Unequal_UNet3D, self).__init__()
-        self.a_block1 = Conv3DBlock(in_channels, 64, kernel_size=(9, 3, 3), padding=(4, 1, 1))
-        self.a_block2 = Conv3DBlock(64, 128, kernel_size=(5, 3, 3), padding=(2, 1, 1))
-        self.a_block3 = Conv3DBlock(128, 256, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+# ****************** an unequal Unet *******************
+class unequal_Conv3DBlock(nn.Module):
+    """
+    The basic block for double 3x3x3 convolutions in the analysis path
+    -- __init__()
+    :param in_channels -> number of input channels
+    :param out_channels -> desired number of output channels
+    :param bottleneck -> specifies the bottlneck block
+    -- forward()
+    :param input -> input Tensor to be convolved
+    :return -> Tensor
+    """
 
-        self.bottleNeck = Conv3DBlock(256, 512, kernel_size=(3, 3, 3), padding=(1, 1, 1), bottleneck=True)
+    def __init__(self, in_channels, out_channels, kernel_size=(3, 3, 3), padding=(1, 1, 1), bottleneck=False) -> None:
+        super(unequal_Conv3DBlock, self).__init__()
+        self.conv1 = nn.Conv3d(in_channels=in_channels, out_channels=out_channels // 2,
+                               kernel_size=kernel_size, padding=padding)
+        self.bn1 = nn.BatchNorm3d(num_features=out_channels // 2)
+        self.conv2 = nn.Conv3d(in_channels=out_channels // 2, out_channels=out_channels,
+                               kernel_size=kernel_size, padding=padding)
+        self.bn2 = nn.BatchNorm3d(num_features=out_channels)
+        self.relu = nn.ReLU()
+        self.bottleneck = bottleneck
+        if not bottleneck:
+            self.pooling = nn.MaxPool3d(kernel_size=(2, 1, 1), stride=(2, 1, 1))
 
-        self.s_block3 = UpConv3DBlock(512, 256)
-        self.s_block2 = UpConv3DBlock(256, 128)
-        self.s_block1 = UpConv3DBlock(128, 64, num_classes=num_classes, last_layer=True)
+    def forward(self, input):
+        res = self.relu(self.bn1(self.conv1(input)))
+        res = self.relu(self.bn2(self.conv2(res)))
+        out = None
+        if not self.bottleneck:
+            out = self.pooling(res)
+        else:
+            out = res
+        return out, res
 
-    def forward(self, x):
-        x, skip1 = self.a_block1(x)
-        x, skip2 = self.a_block2(x)
-        x, skip3 = self.a_block3(x)
-        x, _ = self.bottleNeck(x)
 
-        x = self.s_block3(x, skip3)
-        x = self.s_block2(x, skip2)
-        x = self.s_block1(x, skip1)
+class unequal_UpConv3DBlock(nn.Module):
+    """
+    The basic block for upsampling followed by double 3x3x3 convolutions in the synthesis path
+    -- __init__()
+    :param in_channels -> number of input channels
+    :param out_channels -> number of residual connections' channels to be concatenated
+    :param last_layer -> specifies the last output layer
+    :param num_classes -> specifies the number of output channels for dispirate classes
+    -- forward()
+    :param input -> input Tensor
+    :param residual -> residual connection to be concatenated with input
+    :return -> Tensor
+    """
 
-        return torch.sigmoid(x)
+    def __init__(self, in_channels, res_channels=0, last_layer=False, num_classes=None) -> None:
+        super(unequal_UpConv3DBlock, self).__init__()
+        assert (last_layer == False and num_classes is None) or (
+                last_layer == True and num_classes is not None), 'Invalid arguments'
+        self.upconv1 = nn.ConvTranspose3d(in_channels=in_channels, out_channels=in_channels,
+                                          kernel_size=(2, 1, 1), stride=(2, 1, 1))
+        self.relu = nn.ReLU()
+        self.bn = nn.BatchNorm3d(num_features=in_channels // 2)
+        self.conv1 = nn.Conv3d(in_channels=in_channels + res_channels, out_channels=in_channels // 2,
+                               kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.conv2 = nn.Conv3d(in_channels=in_channels // 2, out_channels=in_channels // 2,
+                               kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.last_layer = last_layer
+        if last_layer:
+            self.conv3 = nn.Conv3d(in_channels=in_channels // 2, out_channels=num_classes, kernel_size=(1, 1, 1))
+
+    def forward(self, input, residual=None):
+        out = self.upconv1(input)
+        if residual is not None:
+            out = torch.cat((out, residual), 1)
+
+        out = self.relu(self.bn(self.conv1(out)))
+        out = self.relu(self.bn(self.conv2(out)))
+        if self.last_layer: out = self.conv3(out)
+        return out
+
+
+class unequal_UNet3D(nn.Module):
+    """
+    The 3D UNet model
+    -- __init__()
+    :param in_channels -> number of input channels
+    :param num_classes -> specifies the number of output channels or masks for different classes
+    :param level_channels -> the number of channels at each level (count top-down)
+    :param bottleneck_channel -> the number of bottleneck channels
+    :param device -> the device on which to run the model
+    -- forward()
+    :param input -> input Tensor
+    :return -> Tensor
+    """
+
+    def __init__(self, in_channels, num_classes, level_channels=None, bottleneck_channel=256) -> None:
+        super(unequal_UNet3D, self).__init__()
+        if level_channels is None:
+            level_channels = [32, 64, 128]
+        level_1_chnls, level_2_chnls, level_3_chnls = level_channels[0], level_channels[1], level_channels[2]
+        self.a_block1 = unequal_Conv3DBlock(in_channels=in_channels, out_channels=level_1_chnls)
+        self.a_block2 = unequal_Conv3DBlock(in_channels=level_1_chnls, out_channels=level_2_chnls)
+        self.a_block3 = unequal_Conv3DBlock(in_channels=level_2_chnls, out_channels=level_3_chnls)
+        self.bottleNeck = unequal_Conv3DBlock(in_channels=level_3_chnls, out_channels=bottleneck_channel,
+                                              bottleneck=True)
+        self.s_block3 = unequal_UpConv3DBlock(in_channels=bottleneck_channel, res_channels=level_3_chnls)
+        self.s_block2 = unequal_UpConv3DBlock(in_channels=level_3_chnls, res_channels=level_2_chnls)
+        self.s_block1 = unequal_UpConv3DBlock(in_channels=level_2_chnls, res_channels=level_1_chnls,
+                                              num_classes=num_classes,
+                                              last_layer=True)
+
+    def forward(self, input):
+        # Analysis path forward feed
+        out, residual_level1 = self.a_block1(input)
+        out, residual_level2 = self.a_block2(out)
+        out, residual_level3 = self.a_block3(out)
+        out, _ = self.bottleNeck(out)
+        # Synthesis path forward feed
+        out = self.s_block3(out, residual_level3)
+        out = self.s_block2(out, residual_level2)
+        out = self.s_block1(out, residual_level1)
+
+        out = torch.sigmoid(out)
+
+        return out
 
 
 # *************************************************
@@ -353,7 +453,7 @@ if __name__ == '__main__':
     import test  # for debug
     from utils_func import criteria
 
-    model = DilatedUNet3D(in_channels=2, num_classes=1)
+    model = unequal_UNet3D(in_channels=2, num_classes=1)
     # Prepare test dataset
     test_loader = test.load_test_dataset()
     for data in test_loader:

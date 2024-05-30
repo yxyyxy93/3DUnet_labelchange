@@ -97,9 +97,12 @@ class TrainValidImageDataset(Dataset):
             # If label file does not exist, create an all-zero array with the same shape as image_noisy
             image_origin = np.zeros_like(image_noisy)
 
+        # move down little bit
+        image_origin = image_origin[:, :, :-1]
+
         # print_statistics(image_origin, "After Resize and Restore")
         new_shape = [17, 17, 256]  # smaller size to match both dataset: image_noisy
-        section_shape = [16, 16, 256]  # random select a section
+        section_shape = [17, 17, 256]  # random select a section
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
@@ -120,7 +123,7 @@ class TrainValidImageDataset(Dataset):
             for i in range(image_origin.shape[1]):
                 for j in range(image_origin.shape[2]):
                     if idx_of_7[i, j] != 0:
-                        image_origin[idx_of_7[i, j]:min(idx_of_7[i, j] + 40, section_shape[2]), i, j] = 1
+                        image_origin[idx_of_7[i, j]:min(idx_of_7[i, j] + 30, section_shape[2]), i, j] = 1
         else:
             raise ValueError("Invalid option type specified in config.")
 
@@ -137,6 +140,7 @@ class TrainValidImageDataset(Dataset):
 
         depth_channel = imgproc.normalize(depth_channel)
         image_noisy_with_depth = np.stack([image_noisy, depth_channel], axis=0)
+        # image_noisy_with_depth = image_noisy[np.newaxis, :, :, :]
         image_origin = image_origin[np.newaxis, :, :, :]  # add a feature channel
 
         # Convert location and depth matrices, and noisy image to PyTorch tensors
@@ -197,7 +201,7 @@ class TestDataset(Dataset):
         image_origin = read_csv_to_3d_array(label_file)
         # print_statistics(image_origin, "After Resize and Restore")
         new_shape = [17, 17, 256]  # smaller size to match both dataset: image_noisy
-        section_shape = [16, 16, 256]  # random select a section
+        section_shape = [17, 17, 256]  # random select a section
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
@@ -228,7 +232,10 @@ class TestDataset(Dataset):
         for d in range(depth):
             depth_channel[d, :, :] = d
         depth_channel = imgproc.normalize(depth_channel)
+
         image_noisy_with_depth = np.stack([image_noisy, depth_channel], axis=0)
+        # image_noisy_with_depth = image_noisy[np.newaxis, :, :, :]
+
         image_origin = image_origin[np.newaxis, :, :, :]  # add a feature channel
         # Convert location and depth matrices, and noisy image to PyTorch tensors
         location_tensor = torch.from_numpy(location_matrix).long()
@@ -463,7 +470,7 @@ if __name__ == "__main__":
                                           option_type=config.option_type,
                                           dilation_factors=config.dilation_factors)
     test_loader = DataLoader(test_dataset, batch_size=1,
-                             shuffle=False)  # Adjust batch_size and other parameters as needed
+                             shuffle=True)  # Adjust batch_size and other parameters as needed
     for data in test_loader:
         input = data['lr'].to(config.device)
         gt = data['gt'].to(config.device)
