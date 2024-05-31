@@ -12,21 +12,23 @@ def read_metrics(file_path):
 
 
 def plot_metrics(metrics_plot, title):
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(18, 6))
 
-    # Plot training loss
-    plt.subplot(1, 2, 1)
+    # Plot training and validation loss
+    plt.subplot(1, 3, 1)
     plt.plot(metrics_plot['avg_train_losses'], label='Avg Train Loss')
     plt.plot(metrics_plot['avg_val_losses'], label='Avg Validation Loss')
+    plt.plot(metrics_plot['avg_test_losses'], label='Avg Test Loss')
     plt.title(f'Average: {title} Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.legend()
 
-    # Plot SSIM scores
-    plt.subplot(1, 2, 2)
+    # Plot training and validation SSIM scores
+    plt.subplot(1, 3, 2)
     plt.plot(metrics_plot['avg_train_scores'], label='Avg Train Score')
     plt.plot(metrics_plot['avg_val_scores'], label='Avg Validation Score')
+    plt.plot(metrics_plot['avg_test_scores'], label='Avg Test Score')
     plt.title(f'Average: {title} SSIM')
     plt.xlabel('Epoch')
     plt.ylabel('SSIM Score')
@@ -126,35 +128,35 @@ if __name__ == "__main__":
     from dataset import plot_dual_orthoslices
 
     # ------------- visualize some samples
-    # Initialize model
-    model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim,
-                                                      num_classes=config.output_dim)
-    model = model.to(device=config.device)
-
-    results_dir = config.results_dir
-    fold_number = 1  # Change as needed
-    model_filename = "d_best.pth.tar"
-    model_path = os.path.join(results_dir, f"_fold {fold_number}", model_filename)
-    # Load model checkpoint
-    model = load_checkpoint(model, model_path)
-
-    # Prepare test dataset
-    test_loader = load_test_dataset()
-    for data in test_loader:
-        inputs = data['lr'].to(config.device)
-        gt = data['gt'].to(config.device)
-
-        # Generate output from the model
-        model.eval()
-        with torch.no_grad():
-            output = model(inputs)
-        if torch.all(gt.eq(0)) | torch.all(gt.eq(1)):
-            print("Skipping as gt shows no defect")
-            continue
-
-        # Visualize the sample
-        plot_dual_orthoslices(gt.squeeze().numpy(), output.squeeze().numpy(), value=1)
-        # break
+    # # Initialize model
+    # model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim,
+    #                                                   num_classes=config.output_dim)
+    # model = model.to(device=config.device)
+    #
+    # results_dir = config.results_dir
+    # fold_number = 1  # Change as needed
+    # model_filename = "d_best.pth.tar"
+    # model_path = os.path.join(results_dir, f"_fold {fold_number}", model_filename)
+    # # Load model checkpoint
+    # model = load_checkpoint(model, model_path)
+    #
+    # # Prepare test dataset
+    # test_loader = load_test_dataset()
+    # for data in test_loader:
+    #     inputs = data['lr'].to(config.device)
+    #     gt = data['gt'].to(config.device)
+    #
+    #     # Generate output from the model
+    #     model.eval()
+    #     with torch.no_grad():
+    #         output = model(inputs)
+    #     if torch.all(gt.eq(0)) | torch.all(gt.eq(1)):
+    #         print("Skipping as gt shows no defect")
+    #         continue
+    #
+    #     # Visualize the sample
+    #     plot_dual_orthoslices(gt.squeeze().numpy(), output.squeeze().numpy(), value=1)
+    #     # break
 
     # ------------- visualize the metrics
     # Directory where the results are stored
@@ -163,8 +165,10 @@ if __name__ == "__main__":
     # Initialize lists to store aggregated metrics
     all_train_losses = []
     all_val_losses = []
+    all_test_losses = []
     all_train_scores = []
     all_val_scores = []
+    all_test_scores = []
 
     for fold in range(1, num_folds + 1):
         results_file = os.path.join(config.results_dir, f'_fold {fold}', 'training_metrics.json')
@@ -172,9 +176,10 @@ if __name__ == "__main__":
             metrics = read_metrics(results_file)
             all_train_losses.append(metrics['train_losses'])
             all_val_losses.append(metrics['val_losses'])
+            all_test_losses.append(metrics['test_losses'])
             all_train_scores.append(metrics['train_scores'])
             all_val_scores.append(metrics['val_scores'])
-
+            all_test_scores.append(metrics['test_scores'])
         else:
             print(f"Metrics file for fold {fold} not found.")
 
@@ -182,12 +187,15 @@ if __name__ == "__main__":
     avg_metrics = {
         'avg_train_losses': np.mean(all_train_losses, axis=0),
         'avg_val_losses': np.mean(all_val_losses, axis=0),
+        'avg_test_losses': np.mean(all_test_losses, axis=0),
         'avg_train_scores': np.mean(all_train_scores, axis=0),
-        'avg_val_scores': np.mean(all_val_scores, axis=0)
+        'avg_val_scores': np.mean(all_val_scores, axis=0),
+        'avg_test_scores': np.mean(all_test_scores, axis=0)
     }
 
-    # print('Val_loss:', np.mean(all_val_losses, axis=0))
+    # Print smallest validation loss and score
     print('Smallest val_loss:', np.min(all_val_losses))
     print('Smallest val_scores:', np.min(all_val_scores))
 
-    plot_metrics(avg_metrics, "Training and Validation")
+    # Plot the metrics
+    plot_metrics(avg_metrics, "Training, Validation, and Test")

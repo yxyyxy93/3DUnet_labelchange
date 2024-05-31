@@ -40,24 +40,27 @@ output_tl = 1  # the depth length
 num_layers = 2
 
 # ------------- choose from models
-d_arch_name = "UNet3D"
+d_arch_name = "unequal_UNet3D"
+# DilatedUNet3D
+# UNet3D
+# unequal_UNet3D
 
 # ---------- choose from loss functions
-loss_function = "DiceLoss"  # Options: DiceLoss, myCrossEntropyLoss, MulticlassDiceLoss, etc.
+loss_function = "DiceLoss"  # Options: DiceLoss, myCrossEntropyLoss, MulticlassDiceLoss, BCE_DiceLoss, etc.
 val_function = "PixelAccuracy"
 
 # Experiment name, easy to save weights and log files
 exp_name = d_arch_name + "_" + loss_function
 # choose exact position or shadow effect, define the dilation
-option_type = 2  # 2 for shadowing and 1 for dilation
-dilation_factors = [19, 0, 0]
+option_type = 1  # 2 for shadowing and 1 for dilation
+dilation_factors = (3, 0, 0)
 
-# samples 
-max_samples = 1000
+# samples
+max_samples = 20000
 
 # Constructing the path
-results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_2024-03-10")
-label_exp_dir = '/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/true_labels.csv'
+results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_2024-05-30")
+label_exp_dir = 'D:\\Matlab_work\\read_CSV_AST\\output\\true_labels.csv'
 test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
                  "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
 

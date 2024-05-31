@@ -44,7 +44,7 @@ def main():
     np.random.seed(random_seed)
 
     # Load datasets for each fold
-    dataloaders_per_fold = load_dataset(num_folds=10)
+    dataloaders_per_fold = load_dataset(num_folds=5)
     # Initialize the number of training epochs
     start_epoch = 0
 
@@ -60,6 +60,8 @@ def main():
     # get the loss function class based on the string name
     criterion = getattr(criteria, config.loss_function)()
     criterion = criterion.to(device=config.device)
+    criterion_test = getattr(criteria, config.loss_function)(smooth=1e3)
+    criterion_test = criterion_test.to(device=config.device)
     val_crite = getattr(criteria, config.val_function)()
     val_crite = val_crite.to(device=config.device)
     print("Define all loss functions successfully.")
@@ -135,7 +137,7 @@ def main():
             avg_test_loss, avg_test_score = test_epoch(test_model=convLSTM_model,
                                                        segment_data=segment_data,
                                                        original_size=original_size,
-                                                       criterion=criterion,
+                                                       criterion=criterion_test,
                                                        val_crite=val_crite,
                                                        writer=writer,
                                                        epoch=epoch,
@@ -290,17 +292,20 @@ def train(
         scaler: amp.GradScaler,
         writer: SummaryWriter,
         val_crite: any  # Add the computation function
-) -> (float, float):  # Change return type to include both loss and SSIM
+) -> (float, float):  # Change return type to include both loss and score
     batches = len(train_prefetcher)
     batch_time = AverageMeter("Time", ":6.3f")
     data_time = AverageMeter("Data", ":6.3f")
     losses = AverageMeter("Loss", ":6.6f")
-    scores = AverageMeter("Score", ":6.6f")  # New meter for SSIM
+    scores = AverageMeter("Score", ":6.6f")  # New meter for score
     progress = ProgressMeter(batches, [batch_time, data_time, losses, scores], prefix=f"Epoch: [{epoch + 1}]")
 
     train_model.train()
     train_prefetcher.reset()
     end = time.time()
+
+    minibatch_losses = []
+    minibatch_scores = []
 
     for batch_index, batch_data in enumerate(train_prefetcher):
         data_time.update(time.time() - end)
@@ -316,18 +321,32 @@ def train(
         scaler.update()
         ema_model.update_parameters(train_model)
         losses.update(loss.item(), lr.size(0))
-        scores.update(score.item(), lr.size(0))  # Update  meter
+        scores.update(score.item(), lr.size(0))  # Update meter
+
+        minibatch_losses.append(loss.item())
+        minibatch_scores.append(score.item())
+
         batch_time.update(time.time() - end)
         end = time.time()
 
         if batch_index % config.train_print_frequency == 0:
             writer.add_scalar(f"Train/Loss", loss.item(), batch_index + epoch * batches + 1)
-            writer.add_scalar(f"Train/Score", score.item(), batch_index + epoch * batches + 1)  # Log SSIM
+            writer.add_scalar(f"Train/Score", score.item(), batch_index + epoch * batches + 1)  # Log
             progress.display(batch_index + 1)
 
     avg_loss = losses.avg
-    avg_ssim = scores.avg  # Calculate average SSIM
-    return avg_loss, avg_ssim  # Return both average loss and SSIM
+    avg_score = scores.avg  # Calculate average score
+
+    # Save minibatch losses and scores
+    minibatch_metrics = {
+        "minibatch_losses": minibatch_losses,
+        "minibatch_scores": minibatch_scores
+    }
+    minibatch_metrics_file = os.path.join(config.results_dir, f'minibatch_metrics_train_epoch_{epoch + 1}.json')
+    with open(minibatch_metrics_file, 'w') as f:
+        json.dump(minibatch_metrics, f)
+
+    return avg_loss, avg_score  # Return both average loss
 
 
 def validate(
@@ -338,7 +357,7 @@ def validate(
         criterion: nn.MSELoss,  # Add criterion for loss computation
         val_crite: any,
         mode: str
-) -> (float, float):  # Change return type to include both loss and SSIM
+) -> (float, float):  # Change return type to include both loss and score
     batch_time = AverageMeter("Time", ":6.3f")
     losses = AverageMeter("Loss", ":6.6f")  # New meter for loss
     scores = AverageMeter("Score", ":6.6f")
@@ -366,13 +385,13 @@ def validate(
 
             if batch_index % config.valid_print_frequency == 0:
                 writer.add_scalar(f"{mode}/Loss", loss.item(), epoch + 1)  # Log loss
-                writer.add_scalar(f"{mode}/SSIM", score.item(), epoch + 1)
+                writer.add_scalar(f"{mode}/Score", score.item(), epoch + 1)
                 progress.display(batch_index + 1)
 
     progress.display_summary()
     avg_loss = losses.avg
-    avg_score = scores.avg  # Calculate average SSIM
-    return avg_loss, avg_score  # Return both average loss and SSIM
+    avg_score = scores.avg  # Calculate average score
+    return avg_loss, avg_score  # Return both average loss and score
 
 
 def test_epoch(

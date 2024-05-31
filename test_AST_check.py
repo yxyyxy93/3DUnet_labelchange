@@ -1,5 +1,4 @@
-import os
-from typing import Any
+from typing import Tuple, List, Any
 
 import numpy as np
 import torch
@@ -10,8 +9,26 @@ from dataset import imgproc
 from utils_func.Read_CSV import read_csv_to_3d_array, save_3d_array_to_csv
 from utils_func.criteria import SSIM3D  # Assuming SSIM3D is defined in utils_func.criteria
 
+import os
+
 # Set mode for testing
 os.environ['MODE'] = 'test'
+import config
+import model_unet3d
+
+
+def print_statistics(tensor, name):
+    mean = tensor.mean().item()
+    std = tensor.std().item()
+    min_val = tensor.min().item()
+    max_val = tensor.max().item()
+
+    print(f"Statistics for {name}:")
+    print(f"Mean: {mean}")
+    print(f"Standard Deviation: {std}")
+    print(f"Min: {min_val}")
+    print(f"Max: {max_val}")
+    print("-" * 30)
 
 
 def load_checkpoint(model_load, checkpoint_path):
@@ -188,94 +205,102 @@ def process_ultrasound_data(fold_number=1,
     return reassembled_data
 
 
-if __name__ == "__main__":
-    # Initialize model
-    import numpy as np
-    import model_unet3d
-    from utils_func import criteria
-
-    import config
-
-    # Parameters
-    fold_number = 1
-    model_filename = "d_best.pth.tar"
-    modified_results_dir = config.results_dir[8:]
-    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
-    process_from_start = True  # User-defined flag to choose processing mode
-
-    # Load and preprocess test data
-    testdata = SimpleCSVLoader(config.test_data_path)
-    testdata.load_and_preprocess()
-    segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
-
-    # Function call
-    reassembled_data = process_ultrasound_data(fold_number=fold_number,
-                                               model_filename=model_filename,
-                                               segment_data=segment_data,
-                                               original_size=original_size,
-                                               save_path=save_path,
-                                               process_from_start=process_from_start,
-                                               step=config.step)
-
-    # work on the sections
-    testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-                               "#090]8_0-1defect/test/x0_60_y0_60_090_2.csv")
-    testdata.load_and_preprocess()
-    segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=1)
-    process_ultrasound_data(fold_number=fold_number,
-                            model_filename=model_filename,
-                            segment_data=segment_data,
-                            original_size=original_size,
-                            save_path=f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-                                      f"#090]8_0-1defect/test/x0_60_y0_60_090_2_{modified_results_dir}.csv",
-                            process_from_start=process_from_start,
-                            step=config.step)
-
-    testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-                               "#090]8_0-1defect/test/x0_120_y0_120_090_2.csv")
-    testdata.load_and_preprocess()
-    segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=1)
-    process_ultrasound_data(fold_number=fold_number,
-                            model_filename=model_filename,
-                            segment_data=segment_data,
-                            original_size=original_size,
-                            save_path=f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-                                      f"#090]8_0-1defect/test/x0_120_y0_120_090_2_{modified_results_dir}.csv",
-                            process_from_start=process_from_start,
-                            step=config.step)
-
-    AST_output = read_csv_to_3d_array("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-                                      "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2_STEG_9dB.csv")
-    # Read the label data
-    label = read_csv_to_3d_array(config.label_exp_dir)
+def process_AST_output(AST_output):
     # Convert AST_output from dB to ratio
     AST_output_ratio = 10 ** (AST_output / 20)
     # Normalize AST_output_ratio to the range 0-1
     AST_output_min = AST_output_ratio.min()
     AST_output_max = AST_output_ratio.max()
     AST_output_normalized = (AST_output_ratio - AST_output_min) / (AST_output_max - AST_output_min)
-
-    # Sum along the 3rd dimension to obtain 2D maps
+    # find the max along the 3rd dimension to obtain 2D maps
     AST_output_2d = AST_output_normalized.max(axis=2)
-    label_2d = label.max(axis=2)
-    reassembled_data_2d = reassembled_data.max(axis=2)
-
-    # Convert to tensors
+    # Convert to tensor
     AST_output_tensor_2d = torch.tensor(AST_output_2d, dtype=torch.float32).to(config.device)
+    return AST_output_tensor_2d
+
+
+def compute_loss_and_score(output_tensor, label_tensor, criterion, val_crite):
+    loss = criterion(output_tensor, label_tensor)
+    score = val_crite(output_tensor, label_tensor)
+    return loss.item(), score.item()
+
+
+def main():
+    from utils_func import criteria
+
+    # # Parameters
+    # fold_number = 1
+    # model_filename = "d_best.pth.tar"
+    # modified_results_dir = config.results_dir[8:]
+    # save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
+    # process_from_start = True  # User-defined flag to choose processing mode
+    #
+    # # Load and preprocess test data
+    # testdata = SimpleCSVLoader(config.test_data_path)
+    # testdata.load_and_preprocess()
+    # segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
+    #
+    # # Function call
+    # reassembled_data = process_ultrasound_data(fold_number=fold_number,
+    #                                            model_filename=model_filename,
+    #                                            segment_data=segment_data,
+    #                                            original_size=original_size,
+    #                                            save_path=save_path,
+    #                                            process_from_start=process_from_start,
+    #                                            step=config.step)
+
+    AST_output3db = read_csv_to_3d_array(
+        "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
+        "\\_snr_100000.00_Inst_amplitude_090_2_STEG_3dB.csv")
+    AST_output6db = read_csv_to_3d_array(
+        "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
+        "\\_snr_100000.00_Inst_amplitude_090_2_STEG_6dB.csv")
+    AST_output9db = read_csv_to_3d_array(
+        "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
+        "\\_snr_100000.00_Inst_amplitude_090_2_STEG_9dB.csv")
+    AST_output12db = read_csv_to_3d_array(
+        "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
+        "\\_snr_100000.00_Inst_amplitude_090_2_STEG_12dB.csv")
+
+    # Read the label data
+    label = read_csv_to_3d_array(config.label_exp_dir)
+
+    # Process each AST output
+    AST_output_tensor_3db = process_AST_output(AST_output3db)
+    AST_output_tensor_6db = process_AST_output(AST_output6db)
+    AST_output_tensor_9db = process_AST_output(AST_output9db)
+    AST_output_tensor_12db = process_AST_output(AST_output12db)
+
+    # Convert label to tensor
+    label_2d = label.max(axis=2)
     label_tensor_2d = torch.tensor(label_2d, dtype=torch.float32).to(config.device)
-    reassembled_data_tensor_2d = torch.tensor(reassembled_data_2d, dtype=torch.float32).to(config.device)
 
     # Define the criterion and validation criterion
     criterion = getattr(criteria, config.loss_function)(smooth=1e3).to(config.device)
     val_crite = getattr(criteria, config.val_function)().to(config.device)
 
-    # Compute loss and score for AST_output
-    loss_AST = criterion(AST_output_tensor_2d, label_tensor_2d)
-    score_AST = val_crite(AST_output_tensor_2d, label_tensor_2d)
+    # Compute loss and score for each AST output
+    loss_3db, score_3db = compute_loss_and_score(AST_output_tensor_3db, label_tensor_2d, criterion, val_crite)
+    loss_6db, score_6db = compute_loss_and_score(AST_output_tensor_6db, label_tensor_2d, criterion, val_crite)
+    loss_9db, score_9db = compute_loss_and_score(AST_output_tensor_9db, label_tensor_2d, criterion, val_crite)
+    loss_12db, score_12db = compute_loss_and_score(AST_output_tensor_12db, label_tensor_2d, criterion, val_crite)
 
-    # Compute loss and score for reassembled_data
-    loss_reassembled = criterion(reassembled_data_tensor_2d, label_tensor_2d)
-    score_reassembled = val_crite(reassembled_data_tensor_2d, label_tensor_2d)
+    # Print results
+    print(f"Final Loss of AST 3dB: {loss_3db}, Final Score of AST 3dB: {score_3db}")
+    print(f"Final Loss of AST 6dB: {loss_6db}, Final Score of AST 6dB: {score_6db}")
+    print(f"Final Loss of AST 9dB: {loss_9db}, Final Score of AST 9dB: {score_9db}")
+    print(f"Final Loss of AST 12dB: {loss_12db}, Final Score of AST 12dB: {score_12db}")
 
-    print(f"Final Loss of AST: {loss_AST.item()}, Final Score of AST: {score_AST.item()}")
-    print(f"Final Loss of reassembled data: {loss_reassembled.item()}, Final Score of reassembled data: {score_reassembled.item()}")
+    AST_output_tensor_zeros = torch.zeros_like(label_tensor_2d)
+    AST_output_tensor_ones = torch.ones_like(label_tensor_2d)
+    loss_zeros, score_zeros = compute_loss_and_score(AST_output_tensor_zeros, label_tensor_2d, criterion, val_crite)
+    loss_ones, score_ones = compute_loss_and_score(AST_output_tensor_ones, label_tensor_2d, criterion, val_crite)
+    print(f"Loss of all-zero matrix: {loss_zeros}, Score of all-zero matrix: {score_zeros}")
+    print(f"Loss of all-one matrix: {loss_ones}, Score of all-one matrix: {score_ones}")
+
+    print_statistics(label_tensor_2d, "Label Tensor")
+    print_statistics(AST_output_tensor_9db, "AST Output Tensor 9dB")
+
+
+if __name__ == "__main__":
+    main()
