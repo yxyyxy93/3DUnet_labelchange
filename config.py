@@ -58,10 +58,15 @@ max_samples = 1000
 # Constructing the path
 results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_2024-03-10")
 label_exp_dir = '/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/true_labels.csv'
+test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
+                 "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
 
 # How many iterations to print the training result
 train_print_frequency = 2
 valid_print_frequency = 10
+
+# for test
+step = 5
 
 # Initialize mode as None
 # mode = os.getenv('MODE', 'train')  # Default to 'train' if not set

@@ -2,9 +2,16 @@
 # Xiaoyu Leo Yang
 # Nanyang Technological University. All Rights Reserved.
 # ==============================================================================
+import atexit
+import datetime
+import json
 import os
+import random
+import signal
+import sys
 import time
 
+import numpy as np
 import torch
 from torch import nn
 from torch import optim
@@ -14,29 +21,38 @@ from torch.optim.lr_scheduler import MultiStepLR
 from torch.optim.swa_utils import AveragedModel
 from torch.utils.data import DataLoader, Subset
 from torch.utils.tensorboard import SummaryWriter
-import json
-import datetime
-import atexit
-import signal
-import sys
 
+import config
+import model_unet3d
 from dataset import CUDAPrefetcher, CPUPrefetcher, TrainValidImageDataset
-from utils_func.utils import load_state_dict, make_directory, save_checkpoint, AverageMeter, ProgressMeter
+from test import SimpleCSVLoader, process_data, process_ultrasound_data, reassemble_chunks
 from utils_func import criteria
+from utils_func.Read_CSV import read_csv_to_3d_array
+from utils_func.utils import load_state_dict, make_directory, save_checkpoint, AverageMeter, ProgressMeter
 
 # Set mode for training
 os.environ['MODE'] = 'train'
-import config
-import model_unet3d
-
-import test
 
 
 def main():
+    # Set the random seed for reproducibility
+    global best_score
+    random_seed = 2024
+    random.seed(random_seed)
+    torch.manual_seed(random_seed)
+    torch.cuda.manual_seed(random_seed)
+    np.random.seed(random_seed)
+
     # Load datasets for each fold
     dataloaders_per_fold = load_dataset(num_folds=10)
     # Initialize the number of training epochs
     start_epoch = 0
+
+    # Load and preprocess test data
+    testdata = SimpleCSVLoader(config.test_data_path)
+    testdata.load_and_preprocess()
+    segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
+
     print("Load all datasets successfully.")
     # show_dataset_info(train_prefetcher, show_sample_slices=False)
     convLSTM_model, ema_model = build_model()
@@ -91,12 +107,13 @@ def main():
         # Initialize the gradient scaler
         scaler = amp.GradScaler(enabled=torch.cuda.is_available())
 
-        # Initialize lists to store metrics for each epoch
-        lowest_val_loss = 1
+        lowest_val_loss = float('inf')
         epoch_train_losses = []
         epoch_val_losses = []
         epoch_train_scores = []
         epoch_val_scores = []
+        epoch_test_losses = []
+        epoch_test_scores = []
 
         for epoch in range(start_epoch, config.epochs):
             avg_train_loss, avg_train_score = train(convLSTM_model,
@@ -107,39 +124,52 @@ def main():
                                                     epoch,
                                                     scaler,
                                                     writer,
-                                                    val_crite)  # Pass the  model to train
+                                                    val_crite)
             avg_val_loss, avg_val_score = validate(convLSTM_model,
                                                    val_prefetcher,
                                                    epoch,
                                                    writer,
-                                                   criterion,  # Pass the loss criterion to validate
+                                                   criterion,
                                                    val_crite,
                                                    "Val")
-            # After train and validate calls
-            # Save the training and validation metrics
+            avg_test_loss, avg_test_score = test_epoch(test_model=convLSTM_model,
+                                                       segment_data=segment_data,
+                                                       original_size=original_size,
+                                                       criterion=criterion,
+                                                       val_crite=val_crite,
+                                                       writer=writer,
+                                                       epoch=epoch,
+                                                       mode="Test")
+
             epoch_train_losses.append(avg_train_loss)
             epoch_train_scores.append(avg_train_score)
             epoch_val_losses.append(avg_val_loss)
             epoch_val_scores.append(avg_val_score)
+            epoch_test_losses.append(avg_test_loss)
+            epoch_test_scores.append(avg_test_score)
+
             metrics = {
                 "train_losses": epoch_train_losses,
                 "train_scores": epoch_train_scores,
                 "val_losses": epoch_val_losses,
-                "val_scores": epoch_val_scores
+                "val_scores": epoch_val_scores,
+                "test_losses": epoch_test_losses,
+                "test_scores": epoch_test_scores
             }
-            # Save to a JSON file
+
             results_file = os.path.join(results_dir, f'training_metrics.json')
             with open(results_file, 'w') as f:
                 json.dump(metrics, f)
             print("\n")
-            # Update LR
+
             scheduler.step()
-            # Automatically save the model with the lowest validation loss
+
             is_best = avg_val_loss < lowest_val_loss
             is_last = (epoch + 1) == config.epochs
             if is_best:
                 lowest_val_loss = min(avg_val_loss, lowest_val_loss)
                 best_score = avg_val_score
+
             save_checkpoint({"epoch": epoch + 1,
                              "best_score": best_score,
                              "best_loss": lowest_val_loss,
@@ -154,36 +184,23 @@ def main():
                             is_last=is_last
                             )
         print(f"Completed training on fold {fold + 1}")
-        # Break the loop after the first iteration
-        break
+        break  # Break the loop after the first iteration
 
     # ********************* test on experiments ********
     # Parameters
     fold_number = 1
     model_filename = "d_best.pth.tar"
     process_from_start = True  # User-defined flag to choose processing mode
-    step = 5
     # Remove the first 8 characters from config.results_dir
     modified_results_dir = config.results_dir[8:]
-    # Function call    
-    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
-                     "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_1.csv"
-    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_1_{modified_results_dir}.csv"
-    test.process_ultrasound_data(fold_number=fold_number,
-                                 model_filename=model_filename,
-                                 test_data_path=test_data_path,
-                                 save_path=save_path,
-                                 process_from_start=process_from_start,
-                                 step=step)
-    test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
-                     "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
     save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
-    test.process_ultrasound_data(fold_number=fold_number,
-                                 model_filename=model_filename,
-                                 test_data_path=test_data_path,
-                                 save_path=save_path,
-                                 process_from_start=process_from_start,
-                                 step=step)
+    process_ultrasound_data(fold_number=fold_number,
+                            model_filename=model_filename,
+                            segment_data=segment_data,
+                            original_size=original_size,
+                            save_path=save_path,
+                            process_from_start=process_from_start,
+                            step=config.step)
     # **************************************************
 
 
@@ -200,8 +217,6 @@ def load_dataset(num_folds=10) -> list:
 
     # Calculate the size of each fold
     fold_size = dataset_size // num_folds
-    print(f"---------------test----------------------")
-    print(f"size of fold {fold_size}")
     dataloaders_per_fold = []
 
     for fold in range(num_folds):
@@ -234,6 +249,8 @@ def load_dataset(num_folds=10) -> list:
 def build_model() -> [nn.Module, nn.Module]:
     convLSTMmodel = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim,
                                                               num_classes=config.output_dim)
+    # Apply weight initialization
+    initialize_weights(convLSTMmodel)
 
     convLSTMmodel = convLSTMmodel.to(device=config.device)
 
@@ -304,8 +321,8 @@ def train(
         end = time.time()
 
         if batch_index % config.train_print_frequency == 0:
-            writer.add_scalar("Train/Loss", loss.item(), batch_index + epoch * batches + 1)
-            writer.add_scalar("Train/Score", score.item(), batch_index + epoch * batches + 1)  # Log SSIM
+            writer.add_scalar(f"Train/Loss", loss.item(), batch_index + epoch * batches + 1)
+            writer.add_scalar(f"Train/Score", score.item(), batch_index + epoch * batches + 1)  # Log SSIM
             progress.display(batch_index + 1)
 
     avg_loss = losses.avg
@@ -358,12 +375,81 @@ def validate(
     return avg_loss, avg_score  # Return both average loss and SSIM
 
 
+def test_epoch(
+        test_model: nn.Module,
+        segment_data,
+        original_size,
+        criterion: nn.Module,
+        val_crite: nn.Module,
+        writer: SummaryWriter,
+        epoch: int,
+        mode: str = 'Test'
+) -> (float, float):
+    batch_time = AverageMeter("Time", ":6.3f")
+    losses = AverageMeter("Loss", ":6.6f")
+    scores = AverageMeter("Score", ":6.6f")
+    progress = ProgressMeter(1, [batch_time, losses, scores], prefix=f"{mode}: ")
+
+    test_model.eval()
+    end = time.time()
+
+    with torch.no_grad():
+        # Process data
+        segment_output = process_data(test_model, segment_data, config.batch_size, config.device)
+        # Read the label data
+        label = read_csv_to_3d_array(config.label_exp_dir)
+        # Reassemble and save the data
+        reassembled_data = reassemble_chunks(segment_output, original_size=original_size,
+                                             chunk_size=(17, 17, 256), step=config.step)
+        # Assuming original data was in (height, width, depth), revert the reassembled data to this order
+        reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
+
+        # Sum along the 3rd dimension to obtain 2D maps
+        label = label.max(axis=2)
+        reassembled_data = reassembled_data.max(axis=2)
+
+        label = torch.tensor(label).to(config.device)
+        reassembled_data = torch.tensor(reassembled_data).to(config.device)
+
+        with amp.autocast():
+            loss = criterion(reassembled_data, label)
+            score = val_crite(reassembled_data, label)
+
+        losses.update(loss.item(), reassembled_data.size(0))
+        scores.update(score.item(), reassembled_data.size(0))
+
+        batch_time.update(time.time() - end)
+        time.time()
+
+        writer.add_scalar(f"{mode}/Loss", loss.item(), epoch + 1)
+        writer.add_scalar(f"{mode}/Score", score.item(), epoch + 1)
+
+    progress.display_summary()
+    avg_loss = losses.avg
+    avg_score = scores.avg
+    return avg_loss, avg_score
+
+
+def initialize_weights(model):
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Conv3d):
+            nn.init.kaiming_uniform_(m.weight, mode='fan_in', nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm3d):
+            nn.init.constant_(m.weight, 1)
+            nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.Linear):
+            nn.init.kaiming_uniform_(m.weight, mode='fan_in', nonlinearity='relu')
+            nn.init.constant_(m.bias, 0)
+
+
 # Function to release GPU resources
 def cleanup():
     torch.cuda.empty_cache()
 
 
-def signal_handler(sig, frame):
+def signal_handler():
     print('You pressed Ctrl+C or terminated the script!')
     # Perform any necessary cleanup here
     sys.exit(0)
