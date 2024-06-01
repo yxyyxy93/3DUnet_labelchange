@@ -128,6 +128,32 @@ class DiceLoss(nn.Module):
         return 1 - dice
 
 
+class TverskyLoss(nn.Module):
+    def __init__(self, alpha=0.7, beta=0.3, smooth=1e4):
+        """
+        When the positive label is sparse, it is often beneficial to set alpha to a higher value to penalize false
+        negatives more heavily. Args: alpha: beta: smooth:
+        """
+        super(TverskyLoss, self).__init__()
+        self.alpha = alpha
+        self.beta = beta
+        self.smooth = smooth
+
+    def forward(self, inputs, targets):
+        # Flatten label and prediction tensors
+        inputs = inputs.reshape(-1)
+        targets = targets.reshape(-1)
+
+        # True Positives, False Positives & False Negatives
+        TP = (inputs * targets).sum()
+        FP = ((1 - targets) * inputs).sum()
+        FN = (targets * (1 - inputs)).sum()
+
+        Tversky = (TP + self.smooth) / (TP + self.alpha * FN + self.beta * FP + self.smooth)
+
+        return 1 - Tversky
+
+
 class WeightedBCELoss(nn.Module):
     def __init__(self, pos_weight=1.0):
         super(WeightedBCELoss, self).__init__()
@@ -140,7 +166,7 @@ class WeightedBCELoss(nn.Module):
 
 
 class BCE_DiceLoss(nn.Module):
-    def __init__(self, pos_weight=1.0, alpha=2.0/2.0, smooth=1e2):
+    def __init__(self, pos_weight=1.0, alpha=2.0 / 2.0, smooth=1e2):
         super(BCE_DiceLoss, self).__init__()
         self.smooth = smooth
         self.dice_loss = DiceLoss(smooth=smooth)
@@ -278,7 +304,7 @@ if __name__ == "__main__":
     loss = loss_func(predictions, targets)
 
     # Create an instance of the DiceLoss
-    dice_loss = DiceLoss()
+    dice_loss = TverskyLoss()
 
     # Calculate loss
     loss = dice_loss(predictions, targets)
