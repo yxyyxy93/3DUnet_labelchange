@@ -98,7 +98,7 @@ class TrainValidImageDataset(Dataset):
             image_origin = np.zeros_like(image_noisy)
 
         # move down little bit
-        image_origin = image_origin[:, :, :-1]
+        image_origin = image_origin[:, :, :-17]
 
         # print_statistics(image_origin, "After Resize and Restore")
         new_shape = [17, 17, 256]  # smaller size to match both dataset: image_noisy
@@ -231,10 +231,11 @@ class TestDataset(Dataset):
         # Fill each depth slice with its respective depth index
         for d in range(depth):
             depth_channel[d, :, :] = d
-        depth_channel = imgproc.normalize(depth_channel)
 
+        depth_channel = imgproc.normalize(depth_channel)
         image_noisy_with_depth = np.stack([image_noisy, depth_channel], axis=0)
         # image_noisy_with_depth = image_noisy[np.newaxis, :, :, :]
+        image_origin = image_origin[np.newaxis, :, :, :]  # add a feature channel
 
         image_origin = image_origin[np.newaxis, :, :, :]  # add a feature channel
         # Convert location and depth matrices, and noisy image to PyTorch tensors

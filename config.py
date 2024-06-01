@@ -32,7 +32,7 @@ np.random.seed(0)
 device = show_cuda_gpu_info()
 
 # Model arch config
-input_dim = 1
+input_dim = 2
 hidden_dim = 64
 kernel_size = (3, 3)
 output_dim = 1  # 2 or more classes
@@ -59,17 +59,18 @@ dilation_factors = (3, 0, 0)
 max_samples = 20000
 
 # Constructing the path
-results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_2024-05-31")
+results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_2024-06-01")
 label_exp_dir = 'D:\\Matlab_work\\read_CSV_AST\\output\\true_labels.csv'
-test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
-                 "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
+test_data_path = "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset" \
+                 "\\test\\_snr_100000.00_Inst_amplitude_090_2.csv"
 
 # How many iterations to print the training result
 train_print_frequency = 2
 valid_print_frequency = 10
 
 # for test
-step = 5
+step = 2
+batch_size = 32
 
 # Initialize mode as None
 # mode = os.getenv('MODE', 'train')  # Default to 'train' if not set
@@ -81,7 +82,6 @@ if mode == "train":
     image_dirs = ['dataset/sim_data']
     label_dir = 'dataset/sim_struct'  # path to the 'sim_struct' directory
 
-    batch_size = 32
     num_workers = 4
 
     # The address to load the pretrained model

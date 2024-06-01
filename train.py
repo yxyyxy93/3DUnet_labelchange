@@ -412,13 +412,13 @@ def test_epoch(
     test_model.eval()
     end = time.time()
 
-    # --------------- Initialize and load the
-    fold_number = 1
-    test_model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim, num_classes=config.output_dim)
-    test_model = test_model.to(device=config.device)
-    model_path = os.path.join(config.results_dir, f"_fold {fold_number}", "d_best.pth.tar")
-    test_model = load_checkpoint(test_model, model_path)
-    # _-----------------------
+    # # --------------- Initialize and load the
+    # fold_number = 1
+    # test_model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim, num_classes=config.output_dim)
+    # test_model = test_model.to(device=config.device)
+    # model_path = os.path.join(config.results_dir, f"_fold {fold_number}", "d_best.pth.tar")
+    # test_model = load_checkpoint(test_model, model_path)
+    # # _-----------------------
 
     with torch.no_grad():
         # Process data
