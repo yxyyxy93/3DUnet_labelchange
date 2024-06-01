@@ -25,9 +25,9 @@ from torch.utils.tensorboard import SummaryWriter
 import config
 import model_unet3d
 from dataset import CUDAPrefetcher, CPUPrefetcher, TrainValidImageDataset
-from test import SimpleCSVLoader, process_data, process_ultrasound_data, reassemble_chunks
+from test import SimpleCSVLoader, process_data, process_ultrasound_data, reassemble_chunks, load_checkpoint
 from utils_func import criteria
-from utils_func.Read_CSV import read_csv_to_3d_array
+from utils_func.Read_CSV import read_csv_to_3d_array, save_3d_array_to_csv
 from utils_func.utils import load_state_dict, make_directory, save_checkpoint, AverageMeter, ProgressMeter
 
 # Set mode for training
@@ -398,8 +398,8 @@ def test_epoch(
         test_model: nn.Module,
         segment_data,
         original_size,
-        criterion: nn.Module,
-        val_crite: nn.Module,
+        criterion: any,
+        val_crite: any,
         writer: SummaryWriter,
         epoch: int,
         mode: str = 'Test'
@@ -412,30 +412,39 @@ def test_epoch(
     test_model.eval()
     end = time.time()
 
+    # --------------- Initialize and load the
+    fold_number = 1
+    test_model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim, num_classes=config.output_dim)
+    test_model = test_model.to(device=config.device)
+    model_path = os.path.join(config.results_dir, f"_fold {fold_number}", "d_best.pth.tar")
+    test_model = load_checkpoint(test_model, model_path)
+    # _-----------------------
+
     with torch.no_grad():
         # Process data
         segment_output = process_data(test_model, segment_data, config.batch_size, config.device)
         # Read the label data
         label = read_csv_to_3d_array(config.label_exp_dir)
+        # Convert label to tensor
+        label_2d = label.max(axis=2)
+        label_tensor_2d = torch.tensor(label_2d, dtype=torch.float32).to(config.device)
+
         # Reassemble and save the data
-        reassembled_data = reassemble_chunks(segment_output, original_size=original_size,
+        reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size,
                                              chunk_size=(17, 17, 256), step=config.step)
         # Assuming original data was in (height, width, depth), revert the reassembled data to this order
         reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
 
-        # Sum along the 3rd dimension to obtain 2D maps
-        label = label.max(axis=2)
-        reassembled_data = reassembled_data.max(axis=2)
-
-        label = torch.tensor(label).to(config.device)
-        reassembled_data = torch.tensor(reassembled_data).to(config.device)
+        save_3d_array_to_csv(reassembled_data, f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
+                                      f"#090]8_0-1defect/test/exp_test_results_epoch_{epoch}.csv",)
+        reassembled_data_tensor_2d = torch.tensor(reassembled_data.max(axis=2), dtype=torch.float32).to(config.device)
 
         with amp.autocast():
-            loss = criterion(reassembled_data, label)
-            score = val_crite(reassembled_data, label)
+            loss = criterion(reassembled_data_tensor_2d, label_tensor_2d)
+            score = val_crite(reassembled_data_tensor_2d, label_tensor_2d)
 
-        losses.update(loss.item(), reassembled_data.size(0))
-        scores.update(score.item(), reassembled_data.size(0))
+        losses.update(loss.item(), 1)
+        scores.update(score.item(), 1)
 
         batch_time.update(time.time() - end)
         time.time()

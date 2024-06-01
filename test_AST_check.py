@@ -22,12 +22,14 @@ def print_statistics(tensor, name):
     std = tensor.std().item()
     min_val = tensor.min().item()
     max_val = tensor.max().item()
+    size = tensor.shape
 
     print(f"Statistics for {name}:")
     print(f"Mean: {mean}")
     print(f"Standard Deviation: {std}")
     print(f"Min: {min_val}")
     print(f"Max: {max_val}")
+    print(f"Size: {size}")
     print("-" * 30)
 
 
@@ -205,9 +207,12 @@ def process_ultrasound_data(fold_number=1,
     return reassembled_data
 
 
-def process_AST_output(AST_output):
+def process_AST_output(AST_output, threshold=0.5):
     # Convert AST_output from dB to ratio
-    AST_output_ratio = 10 ** (AST_output / 20)
+    # AST_output_ratio = 10 ** (AST_output / 20)
+    # AST_output_ratio = AST_output
+    # Apply binary threshold with a value of 0.5
+    AST_output_ratio = np.where(AST_output > threshold, 1.0, 0.0)
     # Normalize AST_output_ratio to the range 0-1
     AST_output_min = AST_output_ratio.min()
     AST_output_max = AST_output_ratio.max()
@@ -228,12 +233,9 @@ def compute_loss_and_score(output_tensor, label_tensor, criterion, val_crite):
 def main():
     from utils_func import criteria
 
-    # # Parameters
-    # fold_number = 1
-    # model_filename = "d_best.pth.tar"
-    # modified_results_dir = config.results_dir[8:]
-    # save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
-    # process_from_start = True  # User-defined flag to choose processing mode
+    # # Parameters fold_number = 1 model_filename = "d_best.pth.tar" modified_results_dir = config.results_dir[8:]
+    # save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{
+    # modified_results_dir}.csv" process_from_start = True  # User-defined flag to choose processing mode
     #
     # # Load and preprocess test data
     # testdata = SimpleCSVLoader(config.test_data_path)
@@ -298,8 +300,17 @@ def main():
     print(f"Loss of all-zero matrix: {loss_zeros}, Score of all-zero matrix: {score_zeros}")
     print(f"Loss of all-one matrix: {loss_ones}, Score of all-one matrix: {score_ones}")
 
-    print_statistics(label_tensor_2d, "Label Tensor")
-    print_statistics(AST_output_tensor_9db, "AST Output Tensor 9dB")
+    DL_output = read_csv_to_3d_array(
+        "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
+        "\\Inst_amplitude_090_2_unequal_UNet3D_DiceLoss_1_20000_3_2024-06-01.csv")
+    # Running the main loop
+    thresholds = [0.3, 0.5, 0.7]
+    for threshold in thresholds:
+        DL_output_tensor_2d = process_AST_output(DL_output, threshold=threshold)
+        loss_DL, score_DL = compute_loss_and_score(DL_output_tensor_2d, label_tensor_2d, criterion, val_crite)
+        print(f"Threshold: {threshold}, Loss of DL: {loss_DL}, Score of DL: {score_DL}")
+
+    # print_statistics(DL_output, "DL")
 
 
 if __name__ == "__main__":

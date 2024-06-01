@@ -13,6 +13,9 @@ from utils_func.criteria import SSIM3D  # Assuming SSIM3D is defined in utils_fu
 # Set mode for testing
 os.environ['MODE'] = 'test'
 
+import model_unet3d
+import config
+
 
 def load_checkpoint(model_load, checkpoint_path):
     # Load a checkpoint into the model
@@ -141,8 +144,8 @@ def process_data(model, segment_data, batch_size, device):
 
         if len(batch_segments) == batch_size or i == len(segment_data) - 1:
             batch_tensor = torch.cat(batch_segments, dim=0)
-            with torch.no_grad():
-                batch_output = model(batch_tensor)
+
+            batch_output = model(batch_tensor)
             batch_output = batch_output.detach().cpu().numpy()
             segment_output.extend(batch_output)
             batch_segments = []

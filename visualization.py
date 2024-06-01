@@ -18,20 +18,20 @@ def plot_metrics(metrics_plot, title):
     plt.subplot(1, 3, 1)
     plt.plot(metrics_plot['avg_train_losses'], label='Avg Train Loss')
     plt.plot(metrics_plot['avg_val_losses'], label='Avg Validation Loss')
-    plt.plot(metrics_plot['avg_test_losses'], label='Avg Test Loss')
+    plt.plot(metrics_plot['avg_test_losses'], label='Test Loss (exp. data)')
     plt.title(f'Average: {title} Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.legend()
 
-    # Plot training and validation SSIM scores
+    # Plot training and validation scores
     plt.subplot(1, 3, 2)
     plt.plot(metrics_plot['avg_train_scores'], label='Avg Train Score')
     plt.plot(metrics_plot['avg_val_scores'], label='Avg Validation Score')
-    plt.plot(metrics_plot['avg_test_scores'], label='Avg Test Score')
-    plt.title(f'Average: {title} SSIM')
+    plt.plot(metrics_plot['avg_test_scores'], label='Test Score (exp. data)')
+    plt.title(f'Average: {title} Score')
     plt.xlabel('Epoch')
-    plt.ylabel('SSIM Score')
+    plt.ylabel('Score')
     plt.legend()
 
     plt.tight_layout()

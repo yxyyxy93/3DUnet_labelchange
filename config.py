@@ -53,13 +53,13 @@ val_function = "PixelAccuracy"
 exp_name = d_arch_name + "_" + loss_function
 # choose exact position or shadow effect, define the dilation
 option_type = 1  # 2 for shadowing and 1 for dilation
-dilation_factors = (3, 0, 0)
+dilation_factors = (5, 0, 0)
 
 # samples
 max_samples = 20000
 
 # Constructing the path
-results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_2024-05-30")
+results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_2024-05-31")
 label_exp_dir = 'D:\\Matlab_work\\read_CSV_AST\\output\\true_labels.csv'
 test_data_path = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
                  "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_2.csv"
