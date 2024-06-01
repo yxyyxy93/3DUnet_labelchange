@@ -60,7 +60,7 @@ def main():
     # get the loss function class based on the string name
     criterion = getattr(criteria, config.loss_function)()
     criterion = criterion.to(device=config.device)
-    criterion_test = getattr(criteria, config.loss_function)(smooth=1e3)
+    criterion_test = getattr(criteria, config.loss_function)(smooth=1e4)
     criterion_test = criterion_test.to(device=config.device)
     val_crite = getattr(criteria, config.val_function)()
     val_crite = val_crite.to(device=config.device)
@@ -426,8 +426,8 @@ def test_epoch(
         # Read the label data
         label = read_csv_to_3d_array(config.label_exp_dir)
         # Convert label to tensor
-        label_2d = label.max(axis=2)
-        label_tensor_2d = torch.tensor(label_2d, dtype=torch.float32).to(config.device)
+        # label_tensor_2d = torch.tensor(label.max(axis=2), dtype=torch.float32).to(config.device)
+        label_tensor_2d = torch.tensor(label, dtype=torch.float32).to(config.device)
 
         # Reassemble and save the data
         reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size,
@@ -437,7 +437,8 @@ def test_epoch(
 
         save_3d_array_to_csv(reassembled_data, f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
                                       f"#090]8_0-1defect/test/exp_test_results_epoch_{epoch}.csv",)
-        reassembled_data_tensor_2d = torch.tensor(reassembled_data.max(axis=2), dtype=torch.float32).to(config.device)
+        # reassembled_data_tensor_2d = torch.tensor(reassembled_data.max(axis=2), dtype=torch.float32).to(config.device)
+        reassembled_data_tensor_2d = torch.tensor(reassembled_data, dtype=torch.float32).to(config.device)
 
         with amp.autocast():
             loss = criterion(reassembled_data_tensor_2d, label_tensor_2d)

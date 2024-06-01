@@ -230,69 +230,77 @@ def compute_loss_and_score(output_tensor, label_tensor, criterion, val_crite):
     return loss.item(), score.item()
 
 
+def compute_mean_depth_indices(array_3d):
+    """
+    Compute the mean depth index along the 3rd dimension using a weighted average.
+
+    Args:
+    array_3d (numpy.ndarray): Input 3D array.
+
+    Returns:
+    torch.Tensor: Tensor containing the mean depth indices.
+    """
+    depths = np.arange(array_3d.shape[2])
+    weighted_sum = (array_3d * depths).sum(axis=2)
+    sum_weights = array_3d.sum(axis=2)
+    mean_depth_indices = np.divide(weighted_sum, sum_weights, out=np.zeros_like(weighted_sum), where=sum_weights != 0)
+    # mean_depth_indices = np.argmax(array_3d, axis=2)
+    # min_val = mean_depth_indices.min()
+    # max_val = mean_depth_indices.max()
+    # normalized_tensor = (mean_depth_indices - min_val) / (max_val - min_val)
+
+    normalized_tensor = mean_depth_indices / 255
+
+    return torch.tensor(normalized_tensor, dtype=torch.float32)
+
+
 def main():
     from utils_func import criteria
+    from torch.nn import MSELoss
+    import matplotlib.pyplot as plt
 
-    # # Parameters fold_number = 1 model_filename = "d_best.pth.tar" modified_results_dir = config.results_dir[8:]
-    # save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{
-    # modified_results_dir}.csv" process_from_start = True  # User-defined flag to choose processing mode
-    #
-    # # Load and preprocess test data
-    # testdata = SimpleCSVLoader(config.test_data_path)
-    # testdata.load_and_preprocess()
-    # segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
-    #
-    # # Function call
-    # reassembled_data = process_ultrasound_data(fold_number=fold_number,
-    #                                            model_filename=model_filename,
-    #                                            segment_data=segment_data,
-    #                                            original_size=original_size,
-    #                                            save_path=save_path,
-    #                                            process_from_start=process_from_start,
-    #                                            step=config.step)
-
-    AST_output3db = read_csv_to_3d_array(
+    # Load data
+    AST_outputs_files = [
         "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-        "\\_snr_100000.00_Inst_amplitude_090_2_STEG_3dB.csv")
-    AST_output6db = read_csv_to_3d_array(
+        "\\_snr_100000.00_Inst_amplitude_090_2_STEG_3dB.csv",
         "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-        "\\_snr_100000.00_Inst_amplitude_090_2_STEG_6dB.csv")
-    AST_output9db = read_csv_to_3d_array(
+        "\\_snr_100000.00_Inst_amplitude_090_2_STEG_6dB.csv",
         "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-        "\\_snr_100000.00_Inst_amplitude_090_2_STEG_9dB.csv")
-    AST_output12db = read_csv_to_3d_array(
+        "\\_snr_100000.00_Inst_amplitude_090_2_STEG_9dB.csv",
         "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-        "\\_snr_100000.00_Inst_amplitude_090_2_STEG_12dB.csv")
+        "\\_snr_100000.00_Inst_amplitude_090_2_STEG_12dB.csv"
+    ]
+    AST_names = ['3dB', '6dB', '9dB', '12dB']
 
     # Read the label data
     label = read_csv_to_3d_array(config.label_exp_dir)
-
-    # Process each AST output
-    AST_output_tensor_3db = process_AST_output(AST_output3db)
-    AST_output_tensor_6db = process_AST_output(AST_output6db)
-    AST_output_tensor_9db = process_AST_output(AST_output9db)
-    AST_output_tensor_12db = process_AST_output(AST_output12db)
 
     # Convert label to tensor
     label_2d = label.max(axis=2)
     label_tensor_2d = torch.tensor(label_2d, dtype=torch.float32).to(config.device)
 
+    # Compute mean depth index for label
+    mean_depth_indices_label = compute_mean_depth_indices(label).to(config.device)
+
     # Define the criterion and validation criterion
     criterion = getattr(criteria, config.loss_function)(smooth=1e3).to(config.device)
     val_crite = getattr(criteria, config.val_function)().to(config.device)
 
-    # Compute loss and score for each AST output
-    loss_3db, score_3db = compute_loss_and_score(AST_output_tensor_3db, label_tensor_2d, criterion, val_crite)
-    loss_6db, score_6db = compute_loss_and_score(AST_output_tensor_6db, label_tensor_2d, criterion, val_crite)
-    loss_9db, score_9db = compute_loss_and_score(AST_output_tensor_9db, label_tensor_2d, criterion, val_crite)
-    loss_12db, score_12db = compute_loss_and_score(AST_output_tensor_12db, label_tensor_2d, criterion, val_crite)
+    # Process each AST output and compute losses and scores
+    mse_criterion = MSELoss(reduction='sum').to(config.device)
 
-    # Print results
-    print(f"Final Loss of AST 3dB: {loss_3db}, Final Score of AST 3dB: {score_3db}")
-    print(f"Final Loss of AST 6dB: {loss_6db}, Final Score of AST 6dB: {score_6db}")
-    print(f"Final Loss of AST 9dB: {loss_9db}, Final Score of AST 9dB: {score_9db}")
-    print(f"Final Loss of AST 12dB: {loss_12db}, Final Score of AST 12dB: {score_12db}")
+    for AST_file, name in zip(AST_outputs_files, AST_names):
+        AST_output = read_csv_to_3d_array(AST_file)
+        AST_output_tensor = process_AST_output(AST_output)
 
+        loss, score = compute_loss_and_score(AST_output_tensor, label_tensor_2d, criterion, val_crite)
+        # Compute mean depth index for AST output
+        mean_depth_indices_AST = compute_mean_depth_indices(AST_output).to(config.device)
+        mse_loss_mean = mse_criterion(mean_depth_indices_AST * AST_output_tensor, mean_depth_indices_label*label_tensor_2d)
+        print(f"Dice Loss of AST {name}: {loss}, Score of AST {name}: {score} MSE Loss Depth: {mse_loss_mean.item()}")
+
+
+    # Compute loss and score for zero and one matrices
     AST_output_tensor_zeros = torch.zeros_like(label_tensor_2d)
     AST_output_tensor_ones = torch.ones_like(label_tensor_2d)
     loss_zeros, score_zeros = compute_loss_and_score(AST_output_tensor_zeros, label_tensor_2d, criterion, val_crite)
@@ -300,15 +308,35 @@ def main():
     print(f"Loss of all-zero matrix: {loss_zeros}, Score of all-zero matrix: {score_zeros}")
     print(f"Loss of all-one matrix: {loss_ones}, Score of all-one matrix: {score_ones}")
 
+    # Load DL_output
     DL_output = read_csv_to_3d_array(
         "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
         "\\Inst_amplitude_090_2_unequal_UNet3D_DiceLoss_1_20000_3_2024-06-01.csv")
-    # Running the main loop
-    thresholds = [0.3, 0.5, 0.7]
+
+    # Running the main loop for different thresholds
+    thresholds = [0.1, 0.3, 0.5, 0.7]
+
     for threshold in thresholds:
         DL_output_tensor_2d = process_AST_output(DL_output, threshold=threshold)
         loss_DL, score_DL = compute_loss_and_score(DL_output_tensor_2d, label_tensor_2d, criterion, val_crite)
-        print(f"Threshold: {threshold}, Loss of DL: {loss_DL}, Score of DL: {score_DL}")
+
+        # Compute mean depth index along the 3rd dimension using weighted average
+        mean_depth_indices_DL = compute_mean_depth_indices(DL_output).to(config.device)
+        mse_loss_mean = mse_criterion(mean_depth_indices_DL * DL_output_tensor_2d, mean_depth_indices_label*label_tensor_2d)
+        print(f"Threshold: {threshold}, Dice Loss of DL: {loss_DL}, Score of DL: {score_DL}; MSE Loss Depth: {mse_loss_mean.item()}")
+
+    DL_output_tensor_2d = DL_output.max(axis=2)
+    # Convert to tensor
+    DL_output_tensor_2d = torch.tensor(DL_output_tensor_2d, dtype=torch.float32).to(config.device)
+    loss_DL, score_DL = compute_loss_and_score(DL_output_tensor_2d, label_tensor_2d, criterion, val_crite)
+    print(f"Dice Loss of DL: {loss_DL}, Score of DL: {score_DL}")
+
+    plt.imshow((mean_depth_indices_DL-mean_depth_indices_label) * label_tensor_2d.cpu().numpy(), cmap='viridis')
+    plt.colorbar()
+    plt.title("Mean Depth Indices of DL Output")
+    plt.xlabel("Width")
+    plt.ylabel("Height")
+    plt.show()
 
     # print_statistics(DL_output, "DL")
 
