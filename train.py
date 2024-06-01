@@ -251,8 +251,8 @@ def load_dataset(num_folds=10) -> list:
 def build_model() -> [nn.Module, nn.Module]:
     convLSTMmodel = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim,
                                                               num_classes=config.output_dim)
-    # Apply weight initialization
-    initialize_weights(convLSTMmodel)
+    # # Apply weight initialization
+    # initialize_weights(convLSTMmodel)
 
     convLSTMmodel = convLSTMmodel.to(device=config.device)
 
@@ -438,6 +438,7 @@ def test_epoch(
         save_3d_array_to_csv(reassembled_data, f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
                             f"#090]8_0-1defect/test/exp_test_results_epoch_{epoch}.csv",)
         # reassembled_data_tensor_2d = torch.tensor(reassembled_data.max(axis=2), dtype=torch.float32).to(config.device)
+        reassembled_data = np.round(reassembled_data, 2)
         reassembled_data_tensor_2d = torch.tensor(reassembled_data, dtype=torch.float32).to(config.device)
 
         with amp.autocast():
