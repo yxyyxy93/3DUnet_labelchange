@@ -34,20 +34,31 @@ class TrainValidImageDataset(Dataset):
     data set is not for data enhancement.
     """
 
-    def __init__(self, image_dirs: str, label_dir: int, option_type=2, dilation_factors=None, max_samples=None) -> None:
+    def __init__(self, image_dirs: str, label_dir: str, option_type=1, dilation_factors=None, max_samples=None,
+                 decay_rate_db_per_mm_per_mhz=0.1) -> None:
         super(TrainValidImageDataset, self).__init__()
+
+        # Set default dilation factors if none are provided
+        self.decay_matrix = None
         if dilation_factors is None:
             dilation_factors = [10, 1, 1]
+
         self.image_dirs = image_dirs
         self.label_dir = label_dir
-        self.subdirs = []
-        self.max_samples = max_samples
-        #    Create a mapping from dataset files to label files
+        self.subdirs = []  # Initialize list to store subdirectories
+        self.max_samples = max_samples  # Maximum number of samples to consider
+
+        # Create a mapping from dataset files to label files
         self.dataset_label_mapping = self._create_dataset_label_mapping()
 
-        # labels setting
+        # Set label and decay related parameters
         self.option_type = option_type
         self.dilation_factors = dilation_factors
+
+        # Set decay rate as a private attribute
+        self._decay_rate_db_per_mm_per_mhz = decay_rate_db_per_mm_per_mhz - 0.1
+        # Initialize the decay matrix
+        self.create_decay_matrix(section_shape=[256, 17, 17])
 
     def _create_dataset_label_mapping(self):
         mapping = {}
@@ -106,7 +117,9 @@ class TrainValidImageDataset(Dataset):
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
-        #
+        # # apply decay along the 3rd dimension
+        image_noisy = image_noisy * self.decay_matrix
+
         # image_origin = np.tile(image_origin, (1, 2, 2))
         # image_noisy = np.tile(image_noisy, (1, 2, 2))
 
@@ -149,6 +162,35 @@ class TrainValidImageDataset(Dataset):
         image_noisy_with_depth = torch.from_numpy(image_noisy_with_depth).float()
 
         return {"gt": origin_tensor, "lr": image_noisy_with_depth, "loc_xy": location_tensor}
+
+    def create_decay_matrix(self, section_shape, frequency_mhz=20.0,
+                            sampling_rate_mhz=200.0, wave_velocity=3000.0):
+        """
+        Creates a decay matrix to simulate signal attenuation over distance.
+
+        :param section_shape: Shape of the section (x, y, z)
+        :param frequency_mhz: Frequency in MHz (default: 20.0)
+        :param sampling_rate_mhz: Sampling rate in MHz (default: 200.0)
+        :param wave_velocity: Wave velocity in m/s (default: 3000.0)
+        """
+        x, y, z = section_shape  # Unpack the section shape
+        decay_vector = []
+
+        # Calculate the decay factor for each position along the x-axis
+        for i in range(x):
+            distance_mm = (i / sampling_rate_mhz) * wave_velocity * 1e-3  # Convert distance to mm
+            decay = 10 ** (-self._decay_rate_db_per_mm_per_mhz * distance_mm * frequency_mhz / 20.0)
+            decay_vector.append(decay)
+
+        # Convert the decay vector to a numpy array
+        decay_vector = np.array(decay_vector)
+        print(decay_vector)
+
+        # Reshape decay_vector to be compatible for tiling
+        decay_vector = decay_vector[:, np.newaxis, np.newaxis]
+
+        # Tile the decay vector to create a 3D decay matrix
+        self.decay_matrix = np.tile(decay_vector, (1, y, z))
 
     def __len__(self) -> int:
         return len(self.dataset_label_mapping)
@@ -199,12 +241,14 @@ class TestDataset(Dataset):
         # Load the images
         image_noisy = read_csv_to_3d_array(dataset_file)
         image_origin = read_csv_to_3d_array(label_file)
+
         # print_statistics(image_origin, "After Resize and Restore")
-        new_shape = [17, 17, 256]  # smaller size to match both dataset: image_noisy
-        section_shape = [17, 17, 256]  # random select a section
+        new_shape = [21, 21, 256]  # smaller size to match both dataset: image_noisy
+        section_shape = [16, 16, 256]  # random select a section
         image_origin, image_noisy = imgproc.resample_3d_array_numpy(image_origin,
                                                                     image_noisy,
                                                                     new_shape, section_shape)
+
         # Option 1: Exact location + dilation
         if self.option_type == 1:
             image_origin = np.where(image_origin == 7, 1, 0)
@@ -218,31 +262,23 @@ class TestDataset(Dataset):
             for i in range(image_origin.shape[1]):
                 for j in range(image_origin.shape[2]):
                     if idx_of_7[i, j] != 0:
-                        image_origin[idx_of_7[i, j]:min(idx_of_7[i, j] + 40, section_shape[2]), i, j] = 1
+                        image_origin[idx_of_7[i, j]:, i, j] = 1
         else:
             raise ValueError("Invalid option type specified in config.")
+
         # First Tensor: Location of Class 1 in terms of W and H
         location_matrix = np.any(image_origin == 1, axis=0)  # Shape: [W, H] for debug
+
         image_noisy = imgproc.normalize(image_noisy)
-        # Assuming image_noisy has shape [depth, height, width]
-        depth, height, width = image_noisy.shape
-        # Initialize an array of zeros with the same shape as image_noisy
-        depth_channel = np.zeros_like(image_noisy, dtype=int)
-        # Fill each depth slice with its respective depth index
-        for d in range(depth):
-            depth_channel[d, :, :] = d
-
-        depth_channel = imgproc.normalize(depth_channel)
-        image_noisy_with_depth = np.stack([image_noisy, depth_channel], axis=0)
-        # image_noisy_with_depth = image_noisy[np.newaxis, :, :, :]
+        image_noisy = image_noisy[np.newaxis, :, :, :]  # add a feature channel
         image_origin = image_origin[np.newaxis, :, :, :]  # add a feature channel
 
-        image_origin = image_origin[np.newaxis, :, :, :]  # add a feature channel
         # Convert location and depth matrices, and noisy image to PyTorch tensors
         location_tensor = torch.from_numpy(location_matrix).long()
         origin_tensor = torch.from_numpy(image_origin).float()
-        image_noisy_with_depth = torch.from_numpy(image_noisy_with_depth).float()
-        return {"gt": origin_tensor, "lr": image_noisy_with_depth, "loc_xy": location_tensor, 'label': dataset_file}
+        noisy_tensor = torch.from_numpy(image_noisy).float()
+
+        return {"gt": origin_tensor, "lr": noisy_tensor, "loc_xy": location_tensor, "label": dataset_file}
 
     def __len__(self) -> int:
         return len(self.dataset_label_mapping)
@@ -469,7 +505,8 @@ if __name__ == "__main__":
     test_dataset = TrainValidImageDataset(config.image_dirs,
                                           config.label_dir,
                                           option_type=config.option_type,
-                                          dilation_factors=config.dilation_factors)
+                                          dilation_factors=config.dilation_factors,
+                                          decay_rate_db_per_mm_per_mhz=config.decay_db_per_mm_per_mhz)
     test_loader = DataLoader(test_dataset, batch_size=1,
                              shuffle=True)  # Adjust batch_size and other parameters as needed
     for data in test_loader:

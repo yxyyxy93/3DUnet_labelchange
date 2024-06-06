@@ -462,16 +462,17 @@ def test_epoch(
 
 def initialize_weights(model):
     for m in model.modules():
-        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Conv3d):
-            nn.init.kaiming_uniform_(m.weight, mode='fan_in', nonlinearity='relu')
+        if isinstance(m, (nn.Conv2d, nn.Conv3d, nn.ConvTranspose3d)):
+            nn.init.xavier_uniform_(m.weight)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm3d):
+        elif isinstance(m, (nn.BatchNorm2d, nn.BatchNorm3d)):
             nn.init.constant_(m.weight, 1)
             nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.Linear):
-            nn.init.kaiming_uniform_(m.weight, mode='fan_in', nonlinearity='relu')
-            nn.init.constant_(m.bias, 0)
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
 
 # Function to release GPU resources

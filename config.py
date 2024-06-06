@@ -57,9 +57,11 @@ dilation_factors = (3, 0, 0)
 
 # samples
 max_samples = 20000
+batch_size = 32
+decay_db_per_mm_per_mhz = 0.2
 
 # Constructing the path
-results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_2024-06-01")
+results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_{batch_size}_{100*decay_db_per_mm_per_mhz}_2024-06-01")
 label_exp_dir = 'D:\\Matlab_work\\read_CSV_AST\\output\\true_labels.csv'
 test_data_path = "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset" \
                  "\\test\\_snr_100000.00_Inst_amplitude_090_2.csv"
@@ -70,7 +72,6 @@ valid_print_frequency = 10
 
 # for test
 step = 2
-batch_size = 32
 
 # Initialize mode as None
 # mode = os.getenv('MODE', 'train')  # Default to 'train' if not set
@@ -79,7 +80,7 @@ mode = os.environ.get('MODE')
 if mode == "train":
     print("train mode")
     # Dataset address
-    image_dirs = ['dataset/sim_data']
+    image_dirs = ['dataset/sim_data_Inst_amplitude_805']
     label_dir = 'dataset/sim_struct'  # path to the 'sim_struct' directory
 
     num_workers = 4
