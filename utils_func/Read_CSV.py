@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 
 def read_csv_to_3d_array(filepath):
@@ -30,6 +31,9 @@ def save_3d_array_to_csv(data_3d_np, filepath):
         data_3d_np (np.ndarray): The 3D array to be saved.
         filepath (str): The path to the CSV file where the data will be saved.
     """
+    directory = os.path.dirname(filepath)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
     with open(filepath, 'w') as file:
         # Write the dimensions of the 3D array as the first line
         x, y, z = data_3d_np.shape

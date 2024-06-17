@@ -110,7 +110,7 @@ class SSIM3D(nn.Module):
 
 # -------------- loss functions
 class DiceLoss(nn.Module):
-    def __init__(self, smooth=1e4):
+    def __init__(self, smooth=1e1):
         super(DiceLoss, self).__init__()
         self.smooth = smooth
 
@@ -129,7 +129,7 @@ class DiceLoss(nn.Module):
 
 
 class TverskyLoss(nn.Module):
-    def __init__(self, alpha=0.7, beta=0.3, smooth=1e4):
+    def __init__(self, alpha=0.995, beta=0.005, smooth=1e0):
         """
         When the positive label is sparse, it is often beneficial to set alpha to a higher value to penalize false
         negatives more heavily. Args: alpha: beta: smooth:
@@ -178,6 +178,30 @@ class BCE_DiceLoss(nn.Module):
         bce = self.bce_loss(inputs, targets)
         return self.alpha * dice + (1 - self.alpha) * bce
 
+
+class BCE_TverskyLoss(nn.Module):
+    def __init__(self, pos_weight=4e2, alpha=0.8, beta=0.2, smooth=1e0, alpha_combined=0.5):
+        """
+        Initialize BCE_TverskyLoss combining BCE and Tversky loss.
+
+        Args:
+        pos_weight (float): Weight for positive samples in BCE.
+        alpha (float): Weight for false negatives in Tversky loss.
+        beta (float): Weight for false positives in Tversky loss.
+        smooth (float): Smoothing factor to avoid division by zero in Tversky loss.
+        alpha_combined (float): Weight for combining BCE and Tversky loss.
+        """
+        super(BCE_TverskyLoss, self).__init__()
+        self.smooth = smooth
+        self.tversky_loss = TverskyLoss(alpha=alpha, beta=beta, smooth=smooth)
+        self.bce_loss = WeightedBCELoss(pos_weight=pos_weight)
+        self.alpha_combined = alpha_combined
+
+    def forward(self, inputs, targets):
+        tversky = self.tversky_loss(inputs, targets)
+        bce = self.bce_loss(inputs, targets)
+        return self.alpha_combined * tversky + (1 - self.alpha_combined) * bce
+        
 
 class CombinedLoss(nn.Module):
     def __init__(self, weight_dice=0.5, weight_mse=0.5, threshold=0.5):

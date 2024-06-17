@@ -1,4 +1,21 @@
 import os
+import dataset
+import numpy as np
+
+
+def calculate_ratio_ones_zeros(dataset):
+    total_ones = 0
+    total_zeros = 0
+
+    for data in dataset:
+        gt = data['gt'].numpy()  # Ground truth tensor
+        ones = np.sum(gt == 1)
+        zeros = np.sum(gt == 0)
+        total_ones += ones
+        total_zeros += zeros
+
+    ratio = total_ones / total_zeros if total_zeros != 0 else float('inf')
+    return ratio, total_ones, total_zeros
 
 
 def main():
@@ -28,9 +45,22 @@ def main():
     else:
         print("All subfolders in '{}' have a corresponding folder in '{}'.".format(", ".join(dirs1), dir2))
 
+    # Create the dataset
+    dataset_samples = dataset.TrainValidImageDataset(
+        config.image_dirs, config.label_dir, option_type=1, dilation_factors=[3, 0, 0],
+        max_samples=20000)
+
+    # Calculate the ratio
+    ratio, total_ones, total_zeros = calculate_ratio_ones_zeros(dataset_samples)
+
+    print(f"Total ones: {total_ones}")
+    print(f"Total zeros: {total_zeros}")
+    print(f"Ratio of ones to zeros: {ratio}")
+
 
 if __name__ == "__main__":
     # Set mode for testing
     os.environ['MODE'] = 'train'
     import config
+
     main()

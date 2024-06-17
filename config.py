@@ -46,7 +46,7 @@ d_arch_name = "unequal_UNet3D"
 # unequal_UNet3D
 
 # ---------- choose from loss functions
-loss_function = "DiceLoss"  # Options: DiceLoss, myCrossEntropyLoss, MulticlassDiceLoss, BCE_DiceLoss, etc.
+loss_function = "TverskyLoss"  # Options: DiceLoss, myCrossEntropyLoss, MulticlassDiceLoss, BCE_DiceLoss, etc.
 val_function = "PixelAccuracy"
 
 # Experiment name, easy to save weights and log files
@@ -58,10 +58,12 @@ dilation_factors = (3, 0, 0)
 # samples
 max_samples = 20000
 batch_size = 32
-decay_db_per_mm_per_mhz = 0.2
+decay_db_per_mm_per_mhz = 0.10
 
 # Constructing the path
-results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_{batch_size}_{100*decay_db_per_mm_per_mhz}_2024-06-01")
+results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_{batch_size}_"
+                                      f"{int(100*decay_db_per_mm_per_mhz)}_2024-06-16")
+
 label_exp_dir = 'D:\\Matlab_work\\read_CSV_AST\\output\\true_labels.csv'
 test_data_path = "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset" \
                  "\\test\\_snr_100000.00_Inst_amplitude_090_2.csv"

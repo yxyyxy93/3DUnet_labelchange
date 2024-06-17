@@ -1,4 +1,4 @@
-# Copyright 2023
+# Copyright 2024
 # Xiaoyu Leo Yang
 # Nanyang Technological University. All Rights Reserved.
 # ==============================================================================
@@ -44,7 +44,7 @@ def main():
     np.random.seed(random_seed)
 
     # Load datasets for each fold
-    dataloaders_per_fold = load_dataset(num_folds=5)
+    dataloaders_per_fold = load_dataset(num_folds=8)
     # Initialize the number of training epochs
     start_epoch = 0
 
@@ -60,10 +60,10 @@ def main():
     # get the loss function class based on the string name
     criterion = getattr(criteria, config.loss_function)()
     criterion = criterion.to(device=config.device)
-    criterion_test = getattr(criteria, config.loss_function)(smooth=1e4)
+    criterion_test = getattr(criteria, config.loss_function)()
     criterion_test = criterion_test.to(device=config.device)
-    val_crite = getattr(criteria, config.val_function)()
-    val_crite = val_crite.to(device=config.device)
+    score_func = getattr(criteria, config.val_function)()
+    score_func = score_func.to(device=config.device)
     print("Define all loss functions successfully.")
     optimizer = define_optimizer(convLSTM_model)
     print("Define all optimizer functions successfully.")
@@ -97,10 +97,12 @@ def main():
         print(f"Size of Training Data: {train_data_size}, Size of Validation Data: {val_data_size}")
         # Get current date
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
-        # Create a experiment results
+        # Create experiment results -- Constructing the path
         results_dir = os.path.join("./results",
-                                   f"{config.exp_name}_{config.option_type}_{config.max_samples}_{config.dilation_factors[0]}_{current_date}",
+                                   f"{config.exp_name}_{config.option_type}_{config.max_samples}_{config.dilation_factors[0]}_{config.batch_size}_"
+                                   f"{int(100 * config.decay_db_per_mm_per_mhz)}_{current_date}",
                                    f"_fold {fold + 1}")
+
         make_directory(results_dir)
 
         # Create training process log file
@@ -126,19 +128,19 @@ def main():
                                                     epoch,
                                                     scaler,
                                                     writer,
-                                                    val_crite)
+                                                    score_func)
             avg_val_loss, avg_val_score = validate(convLSTM_model,
                                                    val_prefetcher,
                                                    epoch,
                                                    writer,
                                                    criterion,
-                                                   val_crite,
+                                                   score_func,
                                                    "Val")
             avg_test_loss, avg_test_score = test_epoch(test_model=convLSTM_model,
                                                        segment_data=segment_data,
                                                        original_size=original_size,
                                                        criterion=criterion_test,
-                                                       val_crite=val_crite,
+                                                       score_func=score_func,
                                                        writer=writer,
                                                        epoch=epoch,
                                                        mode="Test")
@@ -190,23 +192,25 @@ def main():
 
     # ********************* test on experiments ********
     # Parameters
-    fold_number = 1
-    model_filename = "d_best.pth.tar"
-    process_from_start = True  # User-defined flag to choose processing mode
     # Remove the first 8 characters from config.results_dir
     modified_results_dir = config.results_dir[8:]
     save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
-    process_ultrasound_data(fold_number=fold_number,
-                            model_filename=model_filename,
-                            segment_data=segment_data,
-                            original_size=original_size,
-                            save_path=save_path,
-                            process_from_start=process_from_start,
-                            step=config.step)
+    # Process data
+    segment_output = process_data(convLSTM_model, segment_data, config.batch_size, config.device)
+    # Read the label data
+    label = read_csv_to_3d_array(config.label_exp_dir)
+    # Convert label to tensor
+    label_tensor_2d = torch.tensor(label, dtype=torch.float32).to(config.device)
+    # Reassemble and save the data
+    reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size,
+                                        chunk_size=(17, 17, 256), step=config.step)
+    # Assuming original data was in (height, width, depth), revert the reassembled data to this order
+    reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
+    save_3d_array_to_csv(reassembled_data, save_path)
     # **************************************************
 
 
-def load_dataset(num_folds=10) -> list:
+def load_dataset(num_folds=5) -> list:
     # Load the full dataset
     full_dataset = TrainValidImageDataset(image_dirs=config.image_dirs,
                                           label_dir=config.label_dir,
@@ -291,7 +295,7 @@ def train(
         epoch: int,
         scaler: amp.GradScaler,
         writer: SummaryWriter,
-        val_crite: any  # Add the computation function
+        score_func: any  # Add the computation function
 ) -> (float, float):  # Change return type to include both loss and score
     batches = len(train_prefetcher)
     batch_time = AverageMeter("Time", ":6.3f")
@@ -315,7 +319,7 @@ def train(
         with amp.autocast():
             output = train_model(lr)
             loss = criterion(output, gt)
-            score = val_crite(output, gt)  # Compute
+            score = score_func(output, gt)  # Compute
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
@@ -355,7 +359,7 @@ def validate(
         epoch: int,
         writer: SummaryWriter,
         criterion: nn.MSELoss,  # Add criterion for loss computation
-        val_crite: any,
+        score_func: any,
         mode: str
 ) -> (float, float):  # Change return type to include both loss and score
     batch_time = AverageMeter("Time", ":6.3f")
@@ -375,7 +379,7 @@ def validate(
             with amp.autocast():
                 output = validate_model(lr)
                 loss = criterion(output, gt)
-                score = val_crite(output, gt)  # Compute
+                score = score_func(output, gt)  # Compute
 
             losses.update(loss.item(), lr.size(0))  # Update loss meter
             scores.update(score.item(), lr.size(0))
@@ -399,7 +403,7 @@ def test_epoch(
         segment_data,
         original_size,
         criterion: any,
-        val_crite: any,
+        score_func: any,
         writer: SummaryWriter,
         epoch: int,
         mode: str = 'Test'
@@ -436,14 +440,14 @@ def test_epoch(
         reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
 
         save_3d_array_to_csv(reassembled_data, f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-                            f"#090]8_0-1defect/test/exp_test_results_epoch_{epoch}.csv",)
+                            f"#090]8_0-1defect/test/exp_test_results_epoch_{epoch}.csv")
         # reassembled_data_tensor_2d = torch.tensor(reassembled_data.max(axis=2), dtype=torch.float32).to(config.device)
         reassembled_data = np.round(reassembled_data, 2)
         reassembled_data_tensor_2d = torch.tensor(reassembled_data, dtype=torch.float32).to(config.device)
 
         with amp.autocast():
             loss = criterion(reassembled_data_tensor_2d, label_tensor_2d)
-            score = val_crite(reassembled_data_tensor_2d, label_tensor_2d)
+            score = score_func(reassembled_data_tensor_2d, label_tensor_2d)
 
         losses.update(loss.item(), 1)
         scores.update(score.item(), 1)
@@ -463,17 +467,9 @@ def test_epoch(
 def initialize_weights(model):
     for m in model.modules():
         if isinstance(m, (nn.Conv2d, nn.Conv3d, nn.ConvTranspose3d)):
-            nn.init.xavier_uniform_(m.weight)
+            torch.nn.init.kaiming_uniform_(m.weight, mode='fan_in', nonlinearity='relu')
             if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, (nn.BatchNorm2d, nn.BatchNorm3d)):
-            nn.init.constant_(m.weight, 1)
-            nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.Linear):
-            nn.init.xavier_uniform_(m.weight)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-
+                torch.nn.init.constant_(m.bias, 0)
 
 # Function to release GPU resources
 def cleanup():

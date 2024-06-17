@@ -56,7 +56,7 @@ class TrainValidImageDataset(Dataset):
         self.dilation_factors = dilation_factors
 
         # Set decay rate as a private attribute
-        self._decay_rate_db_per_mm_per_mhz = decay_rate_db_per_mm_per_mhz - 0.1
+        self._decay_rate_db_per_mm_per_mhz = decay_rate_db_per_mm_per_mhz - 0.09
         # Initialize the decay matrix
         self.create_decay_matrix(section_shape=[256, 17, 17])
 
@@ -184,7 +184,6 @@ class TrainValidImageDataset(Dataset):
 
         # Convert the decay vector to a numpy array
         decay_vector = np.array(decay_vector)
-        print(decay_vector)
 
         # Reshape decay_vector to be compatible for tiling
         decay_vector = decay_vector[:, np.newaxis, np.newaxis]

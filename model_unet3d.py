@@ -243,10 +243,10 @@ class unequal_Conv3DBlock(nn.Module):
         super(unequal_Conv3DBlock, self).__init__()
         self.conv1 = nn.Conv3d(in_channels=in_channels, out_channels=out_channels // 2,
                                kernel_size=kernel_size, padding=padding)
-        self.bn1 = nn.BatchNorm3d(num_features=out_channels // 2)
+        self.bn1 = nn.BatchNorm3d(num_features=out_channels // 2, affine=True)
         self.conv2 = nn.Conv3d(in_channels=out_channels // 2, out_channels=out_channels,
                                kernel_size=kernel_size, padding=padding)
-        self.bn2 = nn.BatchNorm3d(num_features=out_channels)
+        self.bn2 = nn.BatchNorm3d(num_features=out_channels, affine=True)
         self.relu = nn.ReLU()
         self.bottleneck = bottleneck
         if not bottleneck:
@@ -284,7 +284,7 @@ class unequal_UpConv3DBlock(nn.Module):
         self.upconv1 = nn.ConvTranspose3d(in_channels=in_channels, out_channels=in_channels,
                                           kernel_size=(2, 1, 1), stride=(2, 1, 1))
         self.relu = nn.ReLU()
-        self.bn = nn.BatchNorm3d(num_features=in_channels // 2)
+        self.bn = nn.BatchNorm3d(num_features=in_channels // 2, affine=True)
         self.conv1 = nn.Conv3d(in_channels=in_channels + res_channels, out_channels=in_channels // 2,
                                kernel_size=(3, 3, 3), padding=(1, 1, 1))
         self.conv2 = nn.Conv3d(in_channels=in_channels // 2, out_channels=in_channels // 2,
