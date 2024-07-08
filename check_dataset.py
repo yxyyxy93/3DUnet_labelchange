@@ -1,7 +1,7 @@
 import os
 import dataset
 import numpy as np
-
+import shutil
 
 def calculate_ratio_ones_zeros(dataset):
     total_ones = 0
@@ -45,17 +45,51 @@ def main():
     else:
         print("All subfolders in '{}' have a corresponding folder in '{}'.".format(", ".join(dirs1), dir2))
 
-    # Create the dataset
-    dataset_samples = dataset.TrainValidImageDataset(
-        config.image_dirs, config.label_dir, option_type=1, dilation_factors=[3, 0, 0],
-        max_samples=20000)
+    # # Create the dataset
+    # dataset_samples = dataset.TrainValidImageDataset(
+    #     config.image_dirs, config.label_dir, option_type=1, dilation_factors=[3, 0, 0],
+    #     max_samples=20000)
+    # # Calculate the ratio
+    # ratio, total_ones, total_zeros = calculate_ratio_ones_zeros(dataset_samples)
+    # print(f"Total ones: {total_ones}")
+    # print(f"Total zeros: {total_zeros}")
+    # print(f"Ratio of ones to zeros: {ratio}")
 
-    # Calculate the ratio
-    ratio, total_ones, total_zeros = calculate_ratio_ones_zeros(dataset_samples)
+    # Define the file path
+    file_path = 'defects_log.txt'
 
-    print(f"Total ones: {total_ones}")
-    print(f"Total zeros: {total_zeros}")
-    print(f"Ratio of ones to zeros: {ratio}")
+    # Read the data from the file
+    with open(file_path, 'r') as file:
+        data = file.read()
+
+    # Split the data into lines
+    lines = data.strip().split('\n')
+
+    # Initialize variables
+    set_names_with_zero_defects = []
+    current_set_name = None
+
+    # Process each line
+    for line in lines:
+        if line.startswith('Set Name:'):
+            current_set_name = line.split(': ')[1]
+        elif line.startswith('Num Defects:'):
+            num_defects = int(line.split(': ')[1])
+            if num_defects == 0 and current_set_name is not None:
+                set_names_with_zero_defects.append(current_set_name)
+
+    # Print the result
+    print("Set Names with Num Defects equal to 0:")
+    for set_name in set_names_with_zero_defects:
+        print(set_name)
+        subfolder_name = f"base_model_{set_name}"
+        subfolder_path = os.path.join('/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_['
+                                      '#090]8_0-1defect/sim_data_Inst_amplitude_805', subfolder_name)
+        if os.path.exists(subfolder_path):
+            shutil.rmtree(subfolder_path)
+            print(f"Deleted subfolder: {subfolder_path}")
+        else:
+            print(f"Subfolder not found: {subfolder_path}")
 
 
 if __name__ == "__main__":

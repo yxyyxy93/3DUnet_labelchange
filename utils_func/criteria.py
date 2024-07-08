@@ -110,7 +110,7 @@ class SSIM3D(nn.Module):
 
 # -------------- loss functions
 class DiceLoss(nn.Module):
-    def __init__(self, smooth=1e1):
+    def __init__(self, smooth=1e4):
         super(DiceLoss, self).__init__()
         self.smooth = smooth
 
@@ -129,7 +129,7 @@ class DiceLoss(nn.Module):
 
 
 class TverskyLoss(nn.Module):
-    def __init__(self, alpha=0.995, beta=0.005, smooth=1e0):
+    def __init__(self, alpha=0.999, beta=0.001, smooth=1e0):
         """
         When the positive label is sparse, it is often beneficial to set alpha to a higher value to penalize false
         negatives more heavily. Args: alpha: beta: smooth:

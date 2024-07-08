@@ -16,6 +16,9 @@ os.environ['MODE'] = 'test'
 
 import model_unet3d
 import config
+import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve, auc
+from scipy.ndimage import binary_dilation, binary_erosion
 
 
 def load_checkpoint(checkpoint_path, model, ema_model=None, optimizer=None, scheduler=None):
@@ -28,7 +31,6 @@ def load_checkpoint(checkpoint_path, model, ema_model=None, optimizer=None, sche
     if scheduler:
         scheduler.load_state_dict(checkpoint["scheduler"])
     return model, ema_model, checkpoint
-
 
 
 def load_test_dataset():
@@ -185,9 +187,9 @@ def process_ultrasound_data(fold_number=1,
         ema_model = AveragedModel(convLSTMmodel, avg_fn=ema_avg)
         ema_model = ema_model.to(device=config.device)
         print(f"Build `{config.d_arch_name}` model successfully.")
-        
+
         # Load the EMA model
-        checkpoint_path =  os.path.join(config.results_dir, f"_fold {fold_number}", model_filename)
+        checkpoint_path = os.path.join(config.results_dir, f"_fold {fold_number}", model_filename)
         convLSTMmodel, ema_model, _ = load_checkpoint(checkpoint_path, convLSTMmodel, ema_model)
         # Process data
         segment_output = process_data(ema_model, segment_data, config.batch_size, config.device)
@@ -207,6 +209,31 @@ def process_ultrasound_data(fold_number=1,
     return reassembled_data
 
 
+def compute_roc_auc(results_3d, labels_3d):
+    # Flatten the 3D arrays to 1D
+    results_flat = results_3d.flatten()
+    labels_flat = labels_3d.flatten()
+
+    # Compute ROC curve and ROC area
+    fpr, tpr, _ = roc_curve(labels_flat, results_flat)
+    roc_auc = auc(fpr, tpr)
+
+    return fpr, tpr, roc_auc
+
+
+def plot_roc_curve(fpr, tpr, roc_auc, title="ROC Curve"):
+    plt.figure()
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title(title)
+    plt.legend(loc="lower right")
+    plt.show()
+
+
 if __name__ == "__main__":
     # Initialize model
     import numpy as np
@@ -217,78 +244,84 @@ if __name__ == "__main__":
 
     import config
 
-    # ------------------------------------------------ 
-    # Parameters 
-    fold_number = 1 
+    # # ------------------------------------------------
+    # Parameters
+    fold_number = 1
     model_filename = "d_best.pth.tar"
-    modified_results_dir = config.results_dir[8:] 
+    modified_results_dir = config.results_dir[8:]
     save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect" \
-                f"/test/Inst_amplitude_090_2_{modified_results_dir}.csv" 
+                f"/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
     process_from_start = True  # User-defined flag to choose processing mode
-    
+
     # Load and preprocess test data
-    testdata = SimpleCSVLoader(config.test_data_path)
+    testdata = SimpleCSVLoader("D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset" \
+                 "\\test\\_snr_100000.00_Inst_amplitude_090_2.csv")
     testdata.load_and_preprocess()
-    segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
-    # Function call
-    reassembled_data = process_ultrasound_data(fold_number=fold_number,
-                                               model_filename=model_filename,
-                                               segment_data=segment_data,
-                                               original_size=original_size,
-                                               save_path=save_path,
-                                               process_from_start=process_from_start,
-                                               step=config.step)
-    
-    # work on the sections
-    testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-                               "#090]8_0-1defect/test/x0_60_y0_60_090_2.csv")
-    testdata.load_and_preprocess()
-    segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=1)
-    process_ultrasound_data(fold_number=fold_number,
-                            model_filename=model_filename,
-                            segment_data=segment_data,
-                            original_size=original_size,
-                            save_path=f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-                                      f"#090]8_0-1defect/test/x0_60_y0_60_090_2_{modified_results_dir}.csv",
-                            process_from_start=process_from_start,
-                            step=config.step)
-    
-    testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-                               "#090]8_0-1defect/test/x0_120_y0_120_090_2.csv")
-    testdata.load_and_preprocess()
-    segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=1)
-    process_ultrasound_data(fold_number=fold_number,
-                            model_filename=model_filename,
-                            segment_data=segment_data,
-                            original_size=original_size,
-                            save_path=f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-                                      f"#090]8_0-1defect/test/x0_120_y0_120_090_2_{modified_results_dir}.csv",
-                            process_from_start=process_from_start,
-                            step=config.step)
+    # segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
+    # # Function call
+    # reassembled_data = process_ultrasound_data(fold_number=fold_number,
+    #                                            model_filename=model_filename,
+    #                                            segment_data=segment_data,
+    #                                            original_size=original_size,
+    #                                            save_path=save_path,
+    #                                            process_from_start=process_from_start,
+    #                                            step=config.step)
+    #
+    # # work on the sections
+    # testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
+    #                            "#090]8_0-1defect/test/x0_60_y0_60_090_2.csv")
+    # testdata.load_and_preprocess()
+    # segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=1)
+    # process_ultrasound_data(fold_number=fold_number,
+    #                         model_filename=model_filename,
+    #                         segment_data=segment_data,
+    #                         original_size=original_size,
+    #                         save_path=f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
+    #                                   f"#090]8_0-1defect/test/x0_60_y0_60_090_2_{modified_results_dir}.csv",
+    #                         process_from_start=process_from_start,
+    #                         step=config.step)
+    #
+    # testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
+    #                            "#090]8_0-1defect/test/x0_120_y0_120_090_2.csv")
+    # testdata.load_and_preprocess()
+    # segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=1)
+    # process_ultrasound_data(fold_number=fold_number,
+    #                         model_filename=model_filename,
+    #                         segment_data=segment_data,
+    #                         original_size=original_size,
+    #                         save_path=f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
+    #                                   f"#090]8_0-1defect/test/x0_120_y0_120_090_2_{modified_results_dir}.csv",
+    #                         process_from_start=process_from_start,
+    #                         step=config.step)
     # # ------------------------------------------------
 
     # AST_output3db = read_csv_to_3d_array(
-        # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-        # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_3dB.csv")
+    # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
+    # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_3dB.csv")
     # AST_output6db = read_csv_to_3d_array(
-        # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-        # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_6dB.csv")
+    # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
+    # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_6dB.csv")
     # AST_output9db = read_csv_to_3d_array(
-        # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-        # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_9dB.csv")
+    # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
+    # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_9dB.csv")
     # AST_output12db = read_csv_to_3d_array(
-        # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-        # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_12dB.csv")
+    # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
+    # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_12dB.csv")
 
-    # DL_output = read_csv_to_3d_array(
-        # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-        # "\\Inst_amplitude_090_2_unequal_UNet3D_DiceLoss_1_20000_3_2024-06-01.csv")
+    DL_output = read_csv_to_3d_array(
+        "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
+        "\\Inst_amplitude_090_2_unequal_UNet3D_4l_TverskyLoss_1_20000_3_32_10_2024-07-03_backup.csv")
 
-    # # Read the label data
-    # label = read_csv_to_3d_array(config.label_exp_dir)
-    # label_torch = torch.tensor(label, dtype=torch.float32).to(config.device)
-    # # ---------------------------------
+    # Read the label data
+    label = read_csv_to_3d_array(config.label_exp_dir)
+    # # Define the structuring element for dilation along the 3rd dimension
+    # structuring_element = np.zeros((1, 1, 1))  # This will dilate along the 3rd dimension only
+    # structuring_element[0, 0, :] = 1
+    # Apply dilation to expand "1" values along the 3rd dimension
+    # label = binary_dilation(label, structure=structuring_element)
 
+    label_torch = torch.tensor(label, dtype=torch.float32).to(config.device)
+    # ---------------------------------
     # # Define the criterion and validation criterion
     # criterion = getattr(criteria, config.loss_function)(smooth=1e4).to(config.device)
     # val_crite = getattr(criteria, config.val_function)().to(config.device)
@@ -302,11 +335,11 @@ if __name__ == "__main__":
 
     # # Compute loss and score for AST outputs and reassembled data
     # for AST_output, name in zip([AST_output3db, AST_output6db, AST_output9db, AST_output12db],
-                                # ['3dB', '6dB', '9dB', '12dB']):
-        # AST_output_tensor = torch.tensor(AST_output, dtype=torch.float32).to(config.device)
-        # loss_AST = criterion(AST_output_tensor, label_torch)
-        # score_AST = val_crite(AST_output_tensor, label_torch)
-        # print(f"Final Loss of AST {name}: {loss_AST}, Final Score of AST {name}: {score_AST}")
+    # ['3dB', '6dB', '9dB', '12dB']):
+    # AST_output_tensor = torch.tensor(AST_output, dtype=torch.float32).to(config.device)
+    # loss_AST = criterion(AST_output_tensor, label_torch)
+    # score_AST = val_crite(AST_output_tensor, label_torch)
+    # print(f"Final Loss of AST {name}: {loss_AST}, Final Score of AST {name}: {score_AST}")
 
     # # Example usage
     # zeros_output_tensor = torch.zeros_like(AST_output_tensor)
@@ -317,3 +350,48 @@ if __name__ == "__main__":
     # score_ones = val_crite(ones_output_tensor, label_torch)
     # print(f"Loss of all-zero matrix: {loss_zeros}, Score of all-zero matrix: {score_zeros}")
     # print(f"Loss of all-one matrix: {loss_ones}, Score of all-one matrix: {score_ones}")
+
+    # --------------- plot_roc_curve ---------------
+    # Compute ROC AUC
+    fpr, tpr, roc_auc = compute_roc_auc(DL_output, label)
+    print("ROC AUC = {:.2f}".format(roc_auc))
+    # Plot ROC Curve
+    plot_roc_curve(fpr, tpr, roc_auc)
+
+    # # # for AST method
+    # Compute mean and std along the 1st and 2nd dimensions
+    ori_data = testdata.data[0, :]
+    ori_data = np.transpose(ori_data, (1, 2, 0))
+    mean_along_3rd = np.mean(ori_data, axis=(0, 1))
+    std_along_3rd = np.std(ori_data, axis=(0, 1))
+    # Create a 1D array as mean + std
+    mean_plus_std = mean_along_3rd + std_along_3rd
+    # Initialize the testdata_normalized array
+    testdata_normalized = np.zeros_like(ori_data)
+    # Divide each slice of the label by mean_plus_std along the 3rd dimension using broadcasting
+    for i in range(ori_data.shape[0]):
+        for j in range(ori_data.shape[1]):
+            testdata_normalized[i, j, :] = ori_data[i, j, :] / mean_plus_std
+
+    # Normalize the result
+    min_val = testdata_normalized.min()
+    max_val = testdata_normalized.max()
+    testdata_normalized = (testdata_normalized - min_val) / (max_val - min_val)
+    # Compute ROC AUC
+    fpr, tpr, roc_auc = compute_roc_auc(testdata_normalized, label)
+    # Plot ROC Curve
+    plot_roc_curve(fpr, tpr, roc_auc)
+
+    # # for constant threshold
+    # Define the gate
+    gate = 10
+    # Set values to zero up to the gate along the 3rd dimension
+    ori_data[:, :, :gate] = 0
+    # Normalize the result
+    min_val = ori_data.min()
+    max_val = ori_data.max()
+    ori_data_normalized = (ori_data - min_val) / (max_val - min_val)
+    # Compute ROC AUC
+    fpr, tpr, roc_auc = compute_roc_auc(ori_data_normalized, label)
+    # Plot ROC Curve
+    plot_roc_curve(fpr, tpr, roc_auc)

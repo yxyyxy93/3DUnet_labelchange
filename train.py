@@ -25,7 +25,7 @@ from torch.utils.tensorboard import SummaryWriter
 import config
 import model_unet3d
 from dataset import CUDAPrefetcher, CPUPrefetcher, TrainValidImageDataset
-from test import SimpleCSVLoader, process_data, process_ultrasound_data, reassemble_chunks, load_checkpoint
+from test import SimpleCSVLoader, process_data, process_ultrasound_data, reassemble_chunks, load_checkpoint, compute_roc_auc
 from utils_func import criteria
 from utils_func.Read_CSV import read_csv_to_3d_array, save_3d_array_to_csv
 from utils_func.utils import load_state_dict, make_directory, save_checkpoint, AverageMeter, ProgressMeter
@@ -33,18 +33,27 @@ from utils_func.utils import load_state_dict, make_directory, save_checkpoint, A
 # Set mode for training
 os.environ['MODE'] = 'train'
 
+# Set the random seed for reproducibility
+random_seed = 2024
+random.seed(random_seed)
+np.random.seed(random_seed)
+torch.manual_seed(random_seed)
+torch.cuda.manual_seed(random_seed)
+torch.cuda.manual_seed_all(random_seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+# Set the learning rate
+model_lr = float(os.getenv('LEARNING_RATE', 0.001))  # Default to 0.001 if not set
 
 def main():
     # Set the random seed for reproducibility
     global best_score
-    random_seed = 2024
-    random.seed(random_seed)
-    torch.manual_seed(random_seed)
-    torch.cuda.manual_seed(random_seed)
-    np.random.seed(random_seed)
-
     # Load datasets for each fold
-    dataloaders_per_fold = load_dataset(num_folds=8)
+    dataloaders_per_fold = load_dataset(num_folds=5)
+    
+    print("Load all datasets successfully.")
+    
     # Initialize the number of training epochs
     start_epoch = 0
 
@@ -52,8 +61,14 @@ def main():
     testdata = SimpleCSVLoader(config.test_data_path)
     testdata.load_and_preprocess()
     segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
+    # Load and preprocess test data
+    testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
+                 "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_1.csv")
+    testdata.load_and_preprocess()
+    segment_data1, original_size1 = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
+    del testdata
 
-    print("Load all datasets successfully.")
+    print("Load test data successfully.")
     # show_dataset_info(train_prefetcher, show_sample_slices=False)
     convLSTM_model, ema_model = build_model()
     print(f"Build `{config.d_arch_name}` model successfully.")
@@ -143,7 +158,17 @@ def main():
                                                        score_func=score_func,
                                                        writer=writer,
                                                        epoch=epoch,
-                                                       mode="Test")
+                                                       mode="Test",
+                                                       label_dir=config.label_exp_dir)
+            avg_test_loss, avg_test_score = test_epoch(test_model=convLSTM_model,
+                                                       segment_data=segment_data1,
+                                                       original_size=original_size1,
+                                                       criterion=criterion_test,
+                                                       score_func=score_func,
+                                                       writer=writer,
+                                                       epoch=epoch,
+                                                       mode="Test",
+                                                       label_dir='/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/true_labels_090_1.csv')
 
             epoch_train_losses.append(avg_train_loss)
             epoch_train_scores.append(avg_train_score)
@@ -165,7 +190,6 @@ def main():
             with open(results_file, 'w') as f:
                 json.dump(metrics, f)
             print("\n")
-
             scheduler.step()
 
             is_best = avg_val_loss < lowest_val_loss
@@ -197,15 +221,20 @@ def main():
     save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
     # Process data
     segment_output = process_data(convLSTM_model, segment_data, config.batch_size, config.device)
-    # Read the label data
-    label = read_csv_to_3d_array(config.label_exp_dir)
-    # Convert label to tensor
-    label_tensor_2d = torch.tensor(label, dtype=torch.float32).to(config.device)
     # Reassemble and save the data
     reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size,
                                         chunk_size=(17, 17, 256), step=config.step)
     # Assuming original data was in (height, width, depth), revert the reassembled data to this order
     reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
+    save_3d_array_to_csv(reassembled_data, save_path)
+    
+    segment_output = process_data(convLSTM_model, segment_data1, config.batch_size, config.device)
+    # Reassemble and save the data
+    reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size1,
+                                        chunk_size=(17, 17, 256), step=config.step)
+    # Assuming original data was in (height, width, depth), revert the reassembled data to this order
+    reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
+    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_1_{modified_results_dir}.csv"
     save_3d_array_to_csv(reassembled_data, save_path)
     # **************************************************
 
@@ -220,7 +249,9 @@ def load_dataset(num_folds=5) -> list:
 
     dataset_size = len(full_dataset)
     indices = torch.randperm(dataset_size).tolist()
-
+    # Print the first 10 numbers of the indices
+    print("First 10 indices:", indices[:10])
+    
     # Calculate the size of each fold
     fold_size = dataset_size // num_folds
     dataloaders_per_fold = []
@@ -240,6 +271,7 @@ def load_dataset(num_folds=5) -> list:
                                   persistent_workers=True)
         val_loader = DataLoader(val_subset, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers,
                                 pin_memory=True, drop_last=True, persistent_workers=True)
+        print("Created DataLoaders")                         
         # Now you can check if 'device' is set to "cpu"
         if config.device == torch.device("cpu"):
             train_prefetcher = CPUPrefetcher(train_loader)
@@ -256,7 +288,7 @@ def build_model() -> [nn.Module, nn.Module]:
     convLSTMmodel = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim,
                                                               num_classes=config.output_dim)
     # # Apply weight initialization
-    # initialize_weights(convLSTMmodel)
+    initialize_weights(convLSTMmodel)
 
     convLSTMmodel = convLSTMmodel.to(device=config.device)
 
@@ -270,7 +302,7 @@ def build_model() -> [nn.Module, nn.Module]:
 
 def define_optimizer(model_train) -> optim.Adam:
     optimizer = optim.Adam(model_train.parameters(),
-                           config.model_lr,
+                           model_lr,
                            config.model_betas,
                            config.model_eps,
                            config.model_weight_decay)
@@ -405,8 +437,9 @@ def test_epoch(
         criterion: any,
         score_func: any,
         writer: SummaryWriter,
-        epoch: int,
-        mode: str = 'Test'
+        epoch: int,    
+        label_dir: str, 
+        mode: str = 'Test',
 ) -> (float, float):
     batch_time = AverageMeter("Time", ":6.3f")
     losses = AverageMeter("Loss", ":6.6f")
@@ -428,7 +461,7 @@ def test_epoch(
         # Process data
         segment_output = process_data(test_model, segment_data, config.batch_size, config.device)
         # Read the label data
-        label = read_csv_to_3d_array(config.label_exp_dir)
+        label = read_csv_to_3d_array(label_dir)
         # Convert label to tensor
         # label_tensor_2d = torch.tensor(label.max(axis=2), dtype=torch.float32).to(config.device)
         label_tensor_2d = torch.tensor(label, dtype=torch.float32).to(config.device)
@@ -439,8 +472,8 @@ def test_epoch(
         # Assuming original data was in (height, width, depth), revert the reassembled data to this order
         reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
 
-        save_3d_array_to_csv(reassembled_data, f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-                            f"#090]8_0-1defect/test/exp_test_results_epoch_{epoch}.csv")
+        # save_3d_array_to_csv(reassembled_data, f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
+                            # f"#090]8_0-1defect/test/exp_test_results_epoch_{epoch}.csv")
         # reassembled_data_tensor_2d = torch.tensor(reassembled_data.max(axis=2), dtype=torch.float32).to(config.device)
         reassembled_data = np.round(reassembled_data, 2)
         reassembled_data_tensor_2d = torch.tensor(reassembled_data, dtype=torch.float32).to(config.device)
@@ -449,6 +482,16 @@ def test_epoch(
             loss = criterion(reassembled_data_tensor_2d, label_tensor_2d)
             score = score_func(reassembled_data_tensor_2d, label_tensor_2d)
 
+        # Release the torch.tensor space
+        reassembled_data_tensor_2d = reassembled_data_tensor_2d.detach().cpu()
+        label_tensor_2d = label_tensor_2d.detach().cpu()
+        del reassembled_data_tensor_2d
+        del label_tensor_2d
+        
+        # Compute ROC AUC
+        _, _, roc_auc = compute_roc_auc(reassembled_data, label)
+        print(f"ROC AUC: {roc_auc:.2f}")
+        
         losses.update(loss.item(), 1)
         scores.update(score.item(), 1)
 
@@ -466,10 +509,13 @@ def test_epoch(
 
 def initialize_weights(model):
     for m in model.modules():
-        if isinstance(m, (nn.Conv2d, nn.Conv3d, nn.ConvTranspose3d)):
-            torch.nn.init.kaiming_uniform_(m.weight, mode='fan_in', nonlinearity='relu')
+        if isinstance(m, nn.Conv3d) or isinstance(m, nn.ConvTranspose3d):
+            torch.nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
             if m.bias is not None:
                 torch.nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.BatchNorm3d):
+            torch.nn.init.constant_(m.weight, 1)
+            torch.nn.init.constant_(m.bias, 0)
 
 # Function to release GPU resources
 def cleanup():

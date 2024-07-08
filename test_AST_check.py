@@ -296,9 +296,9 @@ def main():
         loss, score = compute_loss_and_score(AST_output_tensor, label_tensor_2d, criterion, val_crite)
         # Compute mean depth index for AST output
         mean_depth_indices_AST = compute_mean_depth_indices(AST_output).to(config.device)
-        mse_loss_mean = mse_criterion(mean_depth_indices_AST * AST_output_tensor, mean_depth_indices_label*label_tensor_2d)
+        mse_loss_mean = mse_criterion(mean_depth_indices_AST * AST_output_tensor,
+                                      mean_depth_indices_label * label_tensor_2d)
         print(f"Dice Loss of AST {name}: {loss}, Score of AST {name}: {score} MSE Loss Depth: {mse_loss_mean.item()}")
-
 
     # Compute loss and score for zero and one matrices
     AST_output_tensor_zeros = torch.zeros_like(label_tensor_2d)
@@ -322,8 +322,10 @@ def main():
 
         # Compute mean depth index along the 3rd dimension using weighted average
         mean_depth_indices_DL = compute_mean_depth_indices(DL_output).to(config.device)
-        mse_loss_mean = mse_criterion(mean_depth_indices_DL * DL_output_tensor_2d, mean_depth_indices_label*label_tensor_2d)
-        print(f"Threshold: {threshold}, Dice Loss of DL: {loss_DL}, Score of DL: {score_DL}; MSE Loss Depth: {mse_loss_mean.item()}")
+        mse_loss_mean = mse_criterion(mean_depth_indices_DL * DL_output_tensor_2d,
+                                      mean_depth_indices_label * label_tensor_2d)
+        print(
+            f"Threshold: {threshold}, Dice Loss of DL: {loss_DL}, Score of DL: {score_DL}; MSE Loss Depth: {mse_loss_mean.item()}")
 
     DL_output_tensor_2d = DL_output.max(axis=2)
     # Convert to tensor
@@ -331,7 +333,7 @@ def main():
     loss_DL, score_DL = compute_loss_and_score(DL_output_tensor_2d, label_tensor_2d, criterion, val_crite)
     print(f"Dice Loss of DL: {loss_DL}, Score of DL: {score_DL}")
 
-    plt.imshow((mean_depth_indices_DL-mean_depth_indices_label) * label_tensor_2d.cpu().numpy(), cmap='viridis')
+    plt.imshow((mean_depth_indices_DL - mean_depth_indices_label) * label_tensor_2d.cpu().numpy(), cmap='viridis')
     plt.colorbar()
     plt.title("Mean Depth Indices of DL Output")
     plt.xlabel("Width")

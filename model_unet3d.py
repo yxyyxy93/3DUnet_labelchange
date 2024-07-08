@@ -284,9 +284,10 @@ class unequal_UpConv3DBlock(nn.Module):
         self.upconv1 = nn.ConvTranspose3d(in_channels=in_channels, out_channels=in_channels,
                                           kernel_size=(2, 1, 1), stride=(2, 1, 1))
         self.relu = nn.ReLU()
-        self.bn = nn.BatchNorm3d(num_features=in_channels // 2, affine=True)
+        self.bn1 = nn.BatchNorm3d(num_features=in_channels // 2, affine=True)
         self.conv1 = nn.Conv3d(in_channels=in_channels + res_channels, out_channels=in_channels // 2,
                                kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn2 = nn.BatchNorm3d(num_features=in_channels // 2, affine=True)
         self.conv2 = nn.Conv3d(in_channels=in_channels // 2, out_channels=in_channels // 2,
                                kernel_size=(3, 3, 3), padding=(1, 1, 1))
         self.last_layer = last_layer
@@ -298,8 +299,8 @@ class unequal_UpConv3DBlock(nn.Module):
         if residual is not None:
             out = torch.cat((out, residual), 1)
 
-        out = self.relu(self.bn(self.conv1(out)))
-        out = self.relu(self.bn(self.conv2(out)))
+        out = self.relu(self.bn1(self.conv1(out)))
+        out = self.relu(self.bn2(self.conv2(out)))
         if self.last_layer: out = self.conv3(out)
         return out
 
@@ -318,10 +319,10 @@ class unequal_UNet3D(nn.Module):
     :return -> Tensor
     """
 
-    def __init__(self, in_channels, num_classes, level_channels=None, bottleneck_channel=256) -> None:
+    def __init__(self, in_channels, num_classes, level_channels=None, bottleneck_channel=512) -> None:
         super(unequal_UNet3D, self).__init__()
         if level_channels is None:
-            level_channels = [32, 64, 128]
+            level_channels = [64, 128, 256]
         level_1_chnls, level_2_chnls, level_3_chnls = level_channels[0], level_channels[1], level_channels[2]
         self.a_block1 = unequal_Conv3DBlock(in_channels=in_channels, out_channels=level_1_chnls)
         self.a_block2 = unequal_Conv3DBlock(in_channels=level_1_chnls, out_channels=level_2_chnls)
@@ -349,7 +350,39 @@ class unequal_UNet3D(nn.Module):
 
         return out
 
+class unequal_UNet3D_4l(nn.Module):
+    def __init__(self, in_channels, num_classes, level_channels=None, bottleneck_channel=512) -> None:
+        super(unequal_UNet3D_4l, self).__init__()
+        if level_channels is None:
+            level_channels = [32, 64, 128, 256]  # Updated to add another layer starting from 32
+        level_1_chnls, level_2_chnls, level_3_chnls, level_4_chnls = level_channels[0], level_channels[1], level_channels[2], level_channels[3]
+        self.a_block1 = unequal_Conv3DBlock(in_channels=in_channels, out_channels=level_1_chnls)
+        self.a_block2 = unequal_Conv3DBlock(in_channels=level_1_chnls, out_channels=level_2_chnls)
+        self.a_block3 = unequal_Conv3DBlock(in_channels=level_2_chnls, out_channels=level_3_chnls)
+        self.a_block4 = unequal_Conv3DBlock(in_channels=level_3_chnls, out_channels=level_4_chnls)
+        self.bottleNeck = unequal_Conv3DBlock(in_channels=level_4_chnls, out_channels=bottleneck_channel, bottleneck=True)
+        self.s_block4 = unequal_UpConv3DBlock(in_channels=bottleneck_channel, res_channels=level_4_chnls)
+        self.s_block3 = unequal_UpConv3DBlock(in_channels=level_4_chnls, res_channels=level_3_chnls)
+        self.s_block2 = unequal_UpConv3DBlock(in_channels=level_3_chnls, res_channels=level_2_chnls)
+        self.s_block1 = unequal_UpConv3DBlock(in_channels=level_2_chnls, res_channels=level_1_chnls, num_classes=num_classes, last_layer=True)
 
+    def forward(self, input):
+        # Analysis path forward feed
+        out, residual_level1 = self.a_block1(input)
+        out, residual_level2 = self.a_block2(out)
+        out, residual_level3 = self.a_block3(out)
+        out, residual_level4 = self.a_block4(out)
+        out, _ = self.bottleNeck(out)
+        # Synthesis path forward feed
+        out = self.s_block4(out, residual_level4)
+        out = self.s_block3(out, residual_level3)
+        out = self.s_block2(out, residual_level2)
+        out = self.s_block1(out, residual_level1)
+
+        out = torch.sigmoid(out)
+
+        return out
+        
 # *************************************************
 class AttentionBlock3D(nn.Module):
     def __init__(self, F_g, F_l, n_coefficients, F_int=None):

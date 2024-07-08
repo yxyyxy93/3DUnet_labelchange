@@ -56,7 +56,7 @@ class TrainValidImageDataset(Dataset):
         self.dilation_factors = dilation_factors
 
         # Set decay rate as a private attribute
-        self._decay_rate_db_per_mm_per_mhz = decay_rate_db_per_mm_per_mhz - 0.09
+        self._decay_rate_db_per_mm_per_mhz = decay_rate_db_per_mm_per_mhz
         # Initialize the decay matrix
         self.create_decay_matrix(section_shape=[256, 17, 17])
 

@@ -66,7 +66,7 @@ results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{
 
 label_exp_dir = 'D:\\Matlab_work\\read_CSV_AST\\output\\true_labels.csv'
 test_data_path = "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset" \
-                 "\\test\\_snr_100000.00_Inst_amplitude_090_2.csv"
+                 "\\test\\_snr_100000.00_Inst_amplitude_090_1.csv"
 
 # How many iterations to print the training result
 train_print_frequency = 2
