@@ -19,6 +19,7 @@ import config
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
 from scipy.ndimage import binary_dilation, binary_erosion
+import re
 
 
 def load_checkpoint(checkpoint_path, model, ema_model=None, optimizer=None, scheduler=None):
@@ -222,16 +223,38 @@ def compute_roc_auc(results_3d, labels_3d):
 
 
 def plot_roc_curve(fpr, tpr, roc_auc, title="ROC Curve"):
+    # Create a valid filename from the title
+    valid_filename = re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '_') + ".jpg"
+
     plt.figure()
     plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
     plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title(title)
-    plt.legend(loc="lower right")
+    plt.xlabel('False Positive Rate', fontsize=14)
+    plt.ylabel('True Positive Rate', fontsize=14)
+    plt.legend(loc="lower right", fontsize=14)
+    plt.savefig(valid_filename, format='jpg')
     plt.show()
+
+
+def add_or_remove_ones(label, num_ones_to_add=1):
+    # Iterate over each 2D slice along the third dimension
+    for i in range(label.shape[0]):
+        for j in range(label.shape[1]):
+            # Find the indices of the last `1` in the third dimension
+            ones_indices = np.where(label[i, j, :] == 1)[0]
+            if ones_indices.size > 0:
+                last_one_index = ones_indices[-1]
+                if num_ones_to_add > 0:
+                    # Determine the range to add new ones
+                    add_range = min(label.shape[2] - last_one_index - 1, num_ones_to_add)
+                    label[i, j, last_one_index + 1: last_one_index + 1 + add_range] = 1
+                elif num_ones_to_add < 0:
+                    # Determine the range to remove ones
+                    remove_range = min(last_one_index + 1, -num_ones_to_add)
+                    label[i, j, last_one_index - remove_range + 1: last_one_index + 1] = 0
+    return label
 
 
 if __name__ == "__main__":
@@ -254,8 +277,11 @@ if __name__ == "__main__":
     process_from_start = True  # User-defined flag to choose processing mode
 
     # Load and preprocess test data
-    testdata = SimpleCSVLoader("D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset" \
-                 "\\test\\_snr_100000.00_Inst_amplitude_090_2.csv")
+    testdata = SimpleCSVLoader(
+        "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset" \
+        "\\test\\_snr_100000.00_Inst_amplitude_090_1.csv")
+    DL_dir = "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test" \
+             "\\Inst_amplitude_090_1_unequal_UNet3D_TverskyLoss_1_20000_3_32_10_2024-07-11.csv"
     testdata.load_and_preprocess()
     # segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
     # # Function call
@@ -308,19 +334,56 @@ if __name__ == "__main__":
     # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
     # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_12dB.csv")
 
-    DL_output = read_csv_to_3d_array(
-        "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-        "\\Inst_amplitude_090_2_unequal_UNet3D_4l_TverskyLoss_1_20000_3_32_10_2024-07-03_backup.csv")
-
     # Read the label data
     label = read_csv_to_3d_array(config.label_exp_dir)
-    # # Define the structuring element for dilation along the 3rd dimension
-    # structuring_element = np.zeros((1, 1, 1))  # This will dilate along the 3rd dimension only
-    # structuring_element[0, 0, :] = 1
-    # Apply dilation to expand "1" values along the 3rd dimension
-    # label = binary_dilation(label, structure=structuring_element)
+    label = add_or_remove_ones(label, num_ones_to_add=3)
 
     label_torch = torch.tensor(label, dtype=torch.float32).to(config.device)
+
+    # # for AST method
+    # Compute mean and std along the 1st and 2nd dimensions
+    ori_data = testdata.data[0, :]
+    ori_data = np.transpose(ori_data, (1, 2, 0))
+    mean_along_3rd = np.mean(ori_data, axis=(0, 1))
+    std_along_3rd = np.std(ori_data, axis=(0, 1))
+    # Create a 1D array as mean + std
+    mean_plus_std = mean_along_3rd + std_along_3rd
+    # Initialize the testdata_normalized array
+    testdata_normalized = np.zeros_like(ori_data)
+    # Divide each slice of the label by mean_plus_std along the 3rd dimension using broadcasting
+    for i in range(ori_data.shape[0]):
+        for j in range(ori_data.shape[1]):
+            testdata_normalized[i, j, :] = ori_data[i, j, :] / mean_plus_std
+
+    # Normalize the result
+    min_val = testdata_normalized.min()
+    max_val = testdata_normalized.max()
+    testdata_normalized = (testdata_normalized - min_val) / (max_val - min_val)
+    # Compute ROC AUC
+    # testdata_normalized_2d = np.mean(testdata_normalized, axis=2)
+    fpr, tpr, roc_auc = compute_roc_auc(testdata_normalized, label)
+    # Plot ROC Curve
+    # Use regular expression to find the pattern
+    match = re.search(r'_(\d+_\d+)', config.label_exp_dir)
+    if match:
+        extracted_string = match.group(1)
+        print(f"Extracted string: _{extracted_string}")
+    plot_roc_curve(fpr, tpr, roc_auc, title=extracted_string)
+
+    # # # for constant threshold
+    # # Define the gate
+    # gate = 10
+    # # Set values to zero up to the gate along the 3rd dimension
+    # ori_data[:, :, :gate] = 0
+    # # Normalize the result
+    # min_val = ori_data.min()
+    # max_val = ori_data.max()
+    # ori_data_normalized = (ori_data - min_val) / (max_val - min_val)
+    # # Compute ROC AUC
+    # fpr, tpr, roc_auc = compute_roc_auc(ori_data_normalized, label)
+    # # Plot ROC Curve
+    # plot_roc_curve(fpr, tpr, roc_auc)
+
     # ---------------------------------
     # # Define the criterion and validation criterion
     # criterion = getattr(criteria, config.loss_function)(smooth=1e4).to(config.device)
@@ -351,47 +414,13 @@ if __name__ == "__main__":
     # print(f"Loss of all-zero matrix: {loss_zeros}, Score of all-zero matrix: {score_zeros}")
     # print(f"Loss of all-one matrix: {loss_ones}, Score of all-one matrix: {score_ones}")
 
+    DL_output = read_csv_to_3d_array(DL_dir)
+
     # --------------- plot_roc_curve ---------------
     # Compute ROC AUC
+    label_2d = np.max(label, axis=2)
+    # DL_output_2d = np.mean(DL_output, axis=2)
     fpr, tpr, roc_auc = compute_roc_auc(DL_output, label)
     print("ROC AUC = {:.2f}".format(roc_auc))
-    # Plot ROC Curve
-    plot_roc_curve(fpr, tpr, roc_auc)
-
-    # # # for AST method
-    # Compute mean and std along the 1st and 2nd dimensions
-    ori_data = testdata.data[0, :]
-    ori_data = np.transpose(ori_data, (1, 2, 0))
-    mean_along_3rd = np.mean(ori_data, axis=(0, 1))
-    std_along_3rd = np.std(ori_data, axis=(0, 1))
-    # Create a 1D array as mean + std
-    mean_plus_std = mean_along_3rd + std_along_3rd
-    # Initialize the testdata_normalized array
-    testdata_normalized = np.zeros_like(ori_data)
-    # Divide each slice of the label by mean_plus_std along the 3rd dimension using broadcasting
-    for i in range(ori_data.shape[0]):
-        for j in range(ori_data.shape[1]):
-            testdata_normalized[i, j, :] = ori_data[i, j, :] / mean_plus_std
-
-    # Normalize the result
-    min_val = testdata_normalized.min()
-    max_val = testdata_normalized.max()
-    testdata_normalized = (testdata_normalized - min_val) / (max_val - min_val)
-    # Compute ROC AUC
-    fpr, tpr, roc_auc = compute_roc_auc(testdata_normalized, label)
-    # Plot ROC Curve
-    plot_roc_curve(fpr, tpr, roc_auc)
-
-    # # for constant threshold
-    # Define the gate
-    gate = 10
-    # Set values to zero up to the gate along the 3rd dimension
-    ori_data[:, :, :gate] = 0
-    # Normalize the result
-    min_val = ori_data.min()
-    max_val = ori_data.max()
-    ori_data_normalized = (ori_data - min_val) / (max_val - min_val)
-    # Compute ROC AUC
-    fpr, tpr, roc_auc = compute_roc_auc(ori_data_normalized, label)
     # Plot ROC Curve
     plot_roc_curve(fpr, tpr, roc_auc)
