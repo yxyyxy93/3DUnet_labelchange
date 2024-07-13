@@ -5,6 +5,8 @@ results/
 *.yml
 env/
 *.onnx
+*.jpg
+*.png
 
 ## PyTorch
 

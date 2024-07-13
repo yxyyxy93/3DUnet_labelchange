@@ -62,9 +62,10 @@ decay_db_per_mm_per_mhz = 0.10
 
 # Constructing the path
 results_dir = os.path.join("results", f"{exp_name}_{option_type}_{max_samples}_{dilation_factors[0]}_{batch_size}_"
-                                      f"{int(100*decay_db_per_mm_per_mhz)}_2024-06-16")
+                                      f"{int(100*decay_db_per_mm_per_mhz)}_2024-07-11")
 
-label_exp_dir = 'D:\\Matlab_work\\read_CSV_AST\\output\\true_labels_090_1.csv'
+label_exp_dir = 'D:\\Matlab_work\\read_CSV_AST\\output\\true_labels_090_4.csv'
+
 test_data_path = "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset" \
                  "\\test\\_snr_100000.00_Inst_amplitude_090_1.csv"
 

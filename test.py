@@ -14,11 +14,8 @@ from utils_func.criteria import SSIM3D  # Assuming SSIM3D is defined in utils_fu
 # Set mode for testing
 os.environ['MODE'] = 'test'
 
-import model_unet3d
 import config
 import matplotlib.pyplot as plt
-from sklearn.metrics import roc_curve, auc
-from scipy.ndimage import binary_dilation, binary_erosion
 import re
 
 
@@ -210,30 +207,86 @@ def process_ultrasound_data(fold_number=1,
     return reassembled_data
 
 
-def compute_roc_auc(results_3d, labels_3d):
-    # Flatten the 3D arrays to 1D
-    results_flat = results_3d.flatten()
-    labels_flat = labels_3d.flatten()
+def calculate_precision_recall(y_score, y_true, n_interp_points=200):
+    """
+    Calculate the Precision-Recall curve and F1 score.
 
-    # Compute ROC curve and ROC area
-    fpr, tpr, _ = roc_curve(labels_flat, results_flat)
-    roc_auc = auc(fpr, tpr)
+    Parameters
+    ----------
+    y_true : array-like of shape (n_samples,)
+        True binary labels. Must be either 0 or 1.
 
-    return fpr, tpr, roc_auc
+    y_score : array-like of shape (n_samples,)
+        Target scores, can either be probability estimates of the positive
+        class, confidence values, or non-thresholded measure of decisions.
+
+    n_interp_points : int, default=200
+        Number of interpolated points between existing thresholds.
+
+    Returns
+    -------
+    precision : ndarray of shape (>2,)
+        Precision values for the corresponding thresholds.
+
+    recall : ndarray of shape (>2,)
+        Recall values for the corresponding thresholds.
+
+    thresholds : ndarray of shape (n_thresholds,)
+        Decreasing thresholds.
+
+    f1_scores : ndarray of shape (>2,)
+        F1 scores for the corresponding thresholds.
+
+    average_precision : float
+        Average precision score.
+    """
+    # Ensure inputs are numpy arrays
+    y_true = np.asarray(y_true)
+    y_score = np.asarray(y_score)
+
+    # Define thresholds
+    thresholds = np.linspace(1, 0, n_interp_points)
+    precision = []
+    recall = []
+    f1_scores = []
+
+    # Calculate precision, recall, and F1 score for each threshold
+    for thresh in thresholds:
+        tp = np.sum((y_score >= thresh) & (y_true == 1))
+        fp = np.sum((y_score >= thresh) & (y_true == 0))
+        fn = np.sum((y_score < thresh) & (y_true == 1))
+
+        prec = tp / (tp + fp) if tp + fp > 0 else 0
+        rec = tp / (tp + fn) if tp + fn > 0 else 0
+        f1 = 2 * prec * rec / (prec + rec) if prec + rec > 0 else 0
+
+        precision.append(prec)
+        recall.append(rec)
+        f1_scores.append(f1)
+
+    precision = np.array(precision)
+    recall = np.array(recall)
+    f1_scores = np.array(f1_scores)
+
+    # Calculate average precision score manually using the trapezoidal rule
+    average_precision = 0.0
+    for i in range(1, len(precision)):
+        average_precision += (recall[i] - recall[i - 1]) * (precision[i] + precision[i - 1]) / 2
+
+    return precision, recall, thresholds, f1_scores, average_precision
 
 
-def plot_roc_curve(fpr, tpr, roc_auc, title="ROC Curve"):
+def plot_precision_recall_curve(precision, recall, average_precision, title="Precision-Recall Curve"):
     # Create a valid filename from the title
     valid_filename = re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '_') + ".jpg"
 
     plt.figure()
-    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
-    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate', fontsize=14)
-    plt.ylabel('True Positive Rate', fontsize=14)
-    plt.legend(loc="lower right", fontsize=14)
+    plt.plot(recall, precision, color='darkorange', lw=2,
+             label=f'Precision-Recall curve (AP = {average_precision:.2f})')
+    plt.xlabel('Recall', fontsize=14)
+    plt.ylabel('Precision', fontsize=14)
+    plt.legend(loc="lower left", fontsize=14)
+    plt.title(title, fontsize=16)
     plt.savefig(valid_filename, format='jpg')
     plt.show()
 
@@ -257,14 +310,38 @@ def add_or_remove_ones(label, num_ones_to_add=1):
     return label
 
 
+def save_2d_array_as_image(testdata_normalized, save_name):
+    """
+    Saves a 2D array as an image with a colorbar.
+    Parameters
+    ----------
+    testdata_normalized : np.ndarray
+        The 2D array to be saved as an image.
+
+    save_name : str
+        Name of the file to save the image as.
+    """
+    # Ensure the save name ends with .png
+    if not save_name.lower().endswith('.png'):
+        save_name += '.png'
+
+    # Save the 2D array as an image with colorbar
+    plt.figure(figsize=(8, 6))
+    plt.imshow(testdata_normalized, aspect='auto', cmap='jet')
+    plt.colorbar()
+    plt.title('2D Array Image with Colorbar')
+    plt.xlabel('X-axis')
+    plt.ylabel('Y-axis')
+    plt.savefig(save_name, format='png')
+    plt.show()
+
+
 if __name__ == "__main__":
     # Initialize model
     import numpy as np
     from scipy.ndimage import binary_dilation
 
     import model_unet3d
-    from utils_func import criteria
-
     import config
 
     # # ------------------------------------------------
@@ -272,73 +349,30 @@ if __name__ == "__main__":
     fold_number = 1
     model_filename = "d_best.pth.tar"
     modified_results_dir = config.results_dir[8:]
-    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect" \
-                f"/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
     process_from_start = True  # User-defined flag to choose processing mode
 
     # Load and preprocess test data
-    testdata = SimpleCSVLoader(
-        "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset" \
-        "\\test\\_snr_100000.00_Inst_amplitude_090_1.csv")
+    testdata = SimpleCSVLoader(config.test_data_path)
     DL_dir = "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test" \
-             "\\Inst_amplitude_090_1_unequal_UNet3D_TverskyLoss_1_20000_3_32_10_2024-07-11.csv"
-    testdata.load_and_preprocess()
-    # segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
-    # # Function call
-    # reassembled_data = process_ultrasound_data(fold_number=fold_number,
-    #                                            model_filename=model_filename,
-    #                                            segment_data=segment_data,
-    #                                            original_size=original_size,
-    #                                            save_path=save_path,
-    #                                            process_from_start=process_from_start,
-    #                                            step=config.step)
-    #
-    # # work on the sections
-    # testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-    #                            "#090]8_0-1defect/test/x0_60_y0_60_090_2.csv")
-    # testdata.load_and_preprocess()
-    # segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=1)
-    # process_ultrasound_data(fold_number=fold_number,
-    #                         model_filename=model_filename,
-    #                         segment_data=segment_data,
-    #                         original_size=original_size,
-    #                         save_path=f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-    #                                   f"#090]8_0-1defect/test/x0_60_y0_60_090_2_{modified_results_dir}.csv",
-    #                         process_from_start=process_from_start,
-    #                         step=config.step)
-    #
-    # testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-    #                            "#090]8_0-1defect/test/x0_120_y0_120_090_2.csv")
-    # testdata.load_and_preprocess()
-    # segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=1)
-    # process_ultrasound_data(fold_number=fold_number,
-    #                         model_filename=model_filename,
-    #                         segment_data=segment_data,
-    #                         original_size=original_size,
-    #                         save_path=f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-    #                                   f"#090]8_0-1defect/test/x0_120_y0_120_090_2_{modified_results_dir}.csv",
-    #                         process_from_start=process_from_start,
-    #                         step=config.step)
-    # # ------------------------------------------------
+             "\\Inst_amplitude_090_4_unequal_UNet3D_TverskyLoss_1_20000_1_32_10_2024-07-11.csv"
 
-    # AST_output3db = read_csv_to_3d_array(
-    # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-    # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_3dB.csv")
-    # AST_output6db = read_csv_to_3d_array(
-    # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-    # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_6dB.csv")
-    # AST_output9db = read_csv_to_3d_array(
-    # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-    # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_9dB.csv")
-    # AST_output12db = read_csv_to_3d_array(
-    # "D:\\python_work\\WovenComposite_defects\\3dUnet_ultrasound_defect_LabelChange_depthchannel\\dataset\\test"
-    # "\\_snr_100000.00_Inst_amplitude_090_2_STEG_12dB.csv")
+    # Use regex to extract the "_1" part
+    match = re.search(r'_(\d+)\.csv', config.label_exp_dir)
+    if match:
+        extracted_part = match.group(1)
+        extracted_part = f'_{extracted_part}'
+        print(f"Extracted part: {extracted_part}")
+    else:
+        print("No match found")
+
+    testdata.load_and_preprocess()
 
     # Read the label data
     label = read_csv_to_3d_array(config.label_exp_dir)
-    label = add_or_remove_ones(label, num_ones_to_add=3)
-
-    label_torch = torch.tensor(label, dtype=torch.float32).to(config.device)
+    # label = add_or_remove_ones(label, num_ones_to_add=3)
+    label = np.max(label, axis=2)
+    # Call the function
+    save_2d_array_as_image(label, f"label{extracted_part}")
 
     # # for AST method
     # Compute mean and std along the 1st and 2nd dimensions
@@ -359,16 +393,16 @@ if __name__ == "__main__":
     min_val = testdata_normalized.min()
     max_val = testdata_normalized.max()
     testdata_normalized = (testdata_normalized - min_val) / (max_val - min_val)
-    # Compute ROC AUC
-    # testdata_normalized_2d = np.mean(testdata_normalized, axis=2)
-    fpr, tpr, roc_auc = compute_roc_auc(testdata_normalized, label)
-    # Plot ROC Curve
-    # Use regular expression to find the pattern
-    match = re.search(r'_(\d+_\d+)', config.label_exp_dir)
-    if match:
-        extracted_string = match.group(1)
-        print(f"Extracted string: _{extracted_string}")
-    plot_roc_curve(fpr, tpr, roc_auc, title=extracted_string)
+    testdata_normalized = np.max(testdata_normalized, axis=2)
+    save_2d_array_as_image(testdata_normalized, f"AST_pro{extracted_part}")
+    # Compute the Precision-Recall curve and F1 score
+    precision, recall, thresholds, f1_scores, average_precision = calculate_precision_recall(
+        testdata_normalized.flatten(),
+        label.flatten(),
+        n_interp_points=100)
+    print(f"Average Precision: {average_precision:.4f}")
+    # Plot the Precision-Recall curve
+    plot_precision_recall_curve(precision, recall, average_precision, title=f"PR_curve_AST{extracted_part}")
 
     # # # for constant threshold
     # # Define the gate
@@ -415,12 +449,12 @@ if __name__ == "__main__":
     # print(f"Loss of all-one matrix: {loss_ones}, Score of all-one matrix: {score_ones}")
 
     DL_output = read_csv_to_3d_array(DL_dir)
-
-    # --------------- plot_roc_curve ---------------
-    # Compute ROC AUC
-    label_2d = np.max(label, axis=2)
-    # DL_output_2d = np.mean(DL_output, axis=2)
-    fpr, tpr, roc_auc = compute_roc_auc(DL_output, label)
-    print("ROC AUC = {:.2f}".format(roc_auc))
-    # Plot ROC Curve
-    plot_roc_curve(fpr, tpr, roc_auc)
+    DL_output = np.max(DL_output, axis=2)
+    save_2d_array_as_image(DL_output, f"DL_pro{extracted_part}")
+    precision, recall, thresholds, f1_scores, average_precision = calculate_precision_recall(
+        DL_output.flatten(),
+        label.flatten(),
+        n_interp_points=100)
+    print(f"Average Precision: {average_precision:.4f}")
+    # Plot the Precision-Recall curve
+    plot_precision_recall_curve(precision, recall, average_precision, title=f"PR_curve_DL{extracted_part}")
