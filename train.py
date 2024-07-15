@@ -191,36 +191,28 @@ def main():
                             )
 
         test_epoch(test_model=convLSTM_model,
-                   testdata_dirs=testdata_dirs,
-                   label_dir=testdata_dirs)
+                   testdata_dirs=testdata_dirs)
 
         print(f"Completed training on fold {fold + 1}")
 
         break  # Break the loop after the first iteration
 
-    # # ********************* test on experiments ********
-    # # Parameters
-    # # Remove the first 8 characters from config.results_dir
-    # modified_results_dir = config.results_dir[8:]
-    # save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
-    # # Process data
-    # segment_output = process_data(convLSTM_model, segment_data, config.batch_size, config.device)
-    # # Reassemble and save the data
-    # reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size,
-    #                                      chunk_size=(17, 17, 256), step=config.step)
-    # # Assuming original data was in (height, width, depth), revert the reassembled data to this order
-    # reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
-    # save_3d_array_to_csv(reassembled_data, save_path)
+    # # ********************* test on experiments ******** # Parameters # Remove the first 8 characters from
+    # config.results_dir modified_results_dir = config.results_dir[8:] save_path =
+    # f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{
+    # modified_results_dir}.csv" # Process data segment_output = process_data(convLSTM_model, segment_data,
+    # config.batch_size, config.device) # Reassemble and save the data reassembled_data = reassemble_chunks(
+    # chunks=segment_output, original_size=original_size, chunk_size=(17, 17, 256), step=config.step) # Assuming
+    # original data was in (height, width, depth), revert the reassembled data to this order reassembled_data =
+    # np.transpose(reassembled_data, (1, 2, 0)) save_3d_array_to_csv(reassembled_data, save_path)
     #
-    # segment_output = process_data(convLSTM_model, segment_data1, config.batch_size, config.device)
-    # # Reassemble and save the data
-    # reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size1,
-    #                                      chunk_size=(17, 17, 256), step=config.step)
-    # # Assuming original data was in (height, width, depth), revert the reassembled data to this order
-    # reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
-    # save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_1_{modified_results_dir}.csv"
-    # save_3d_array_to_csv(reassembled_data, save_path)
-    # # **************************************************
+    # segment_output = process_data(convLSTM_model, segment_data1, config.batch_size, config.device) # Reassemble and
+    # save the data reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size1,
+    # chunk_size=(17, 17, 256), step=config.step) # Assuming original data was in (height, width, depth), revert the
+    # reassembled data to this order reassembled_data = np.transpose(reassembled_data, (1, 2, 0)) save_path =
+    # f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_1_{
+    # modified_results_dir}.csv" save_3d_array_to_csv(reassembled_data, save_path) #
+    # **************************************************
 
 
 def load_dataset(num_folds=5) -> list:
@@ -416,8 +408,7 @@ def validate(
 
 def test_epoch(
         test_model: torch.nn.Module,
-        testdata_dirs: list,
-        label_dir=config.label_exp_dir,
+        testdata_dirs: list
 ) -> None:
     for epoch, csv_file_path in enumerate(testdata_dirs, start=1):
         batch_time = AverageMeter("Time", ":6.3f")
@@ -431,16 +422,20 @@ def test_epoch(
             # Process data
             segment_output = process_data(test_model, segment_data, config.batch_size, config.device)
             # Read the label data
+            # Generate label file path from test data file path
+            base_name = os.path.basename(csv_file_path)
+            label_name = base_name.replace('_snr_100000.00_Inst_amplitude', 'true_labels')
+            label_dir = os.path.join(os.path.dirname(csv_file_path), label_name)
             label = read_csv_to_3d_array(label_dir)
             # Reassemble and save the data
             reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size,
                                                  chunk_size=(17, 17, 256), step=config.step)
             # Assuming original data was in (height, width, depth), revert the reassembled data to this order
             reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
-            reassembled_data = np.round(reassembled_data, 2)
+            # reassembled_data = np.round(reassembled_data, 2)
             # Release the torch.tensor space
             reassembled_data_2d = np.max(reassembled_data, axis=2)
-            label_2d = label.detach().cpu()
+            label_2d = np.max(label, axis=2)
             del reassembled_data
             del label
             # Compute Precision-Recall curve and F1 score
