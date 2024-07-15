@@ -12,7 +12,6 @@ os.environ['MODE'] = 'test'
 import config
 import re
 
-
 if __name__ == "__main__":
     # Initialize model
     import numpy as np
@@ -44,15 +43,15 @@ if __name__ == "__main__":
     testdata.load_and_preprocess()
     segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
     # Function call
-    reassembled_data = process_ultrasound_data(fold_number=fold_number,
-                                               model_filename=model_filename,
-                                               segment_data=segment_data,
-                                               original_size=original_size,
-                                               save_path="",
-                                               process_from_start=process_from_start,
-                                               step=config.step)
+    DL_output = process_ultrasound_data(fold_number=fold_number,
+                                        model_filename=model_filename,
+                                        segment_data=segment_data,
+                                        original_size=original_size,
+                                        save_path="",
+                                        process_from_start=process_from_start,
+                                        step=config.step)
 
-    # work on the sections
+    # **************** work on the sections
     testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
                                "#090]8_0-1defect/test/x0_60_y0_60_090_2.csv")
     testdata.load_and_preprocess()

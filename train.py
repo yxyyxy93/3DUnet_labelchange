@@ -25,7 +25,7 @@ from torch.utils.tensorboard import SummaryWriter
 import config
 import model_unet3d
 from dataset import CUDAPrefetcher, CPUPrefetcher, TrainValidImageDataset
-from test import SimpleCSVLoader, process_data, process_ultrasound_data, reassemble_chunks, load_checkpoint, compute_roc_auc
+from test import SimpleCSVLoader, process_data, process_ultrasound_data, reassemble_chunks, calculate_precision_recall
 from utils_func import criteria
 from utils_func.Read_CSV import read_csv_to_3d_array, save_3d_array_to_csv
 from utils_func.utils import load_state_dict, make_directory, save_checkpoint, AverageMeter, ProgressMeter
@@ -46,27 +46,28 @@ torch.backends.cudnn.benchmark = False
 # Set the learning rate
 model_lr = float(os.getenv('LEARNING_RATE', 0.001))  # Default to 0.001 if not set
 
+
 def main():
     # Set the random seed for reproducibility
     global best_score
     # Load datasets for each fold
     dataloaders_per_fold = load_dataset(num_folds=5)
-    
+
     print("Load all datasets successfully.")
-    
+
     # Initialize the number of training epochs
     start_epoch = 0
 
-    # Load and preprocess test data
-    testdata = SimpleCSVLoader(config.test_data_path)
-    testdata.load_and_preprocess()
-    segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
-    # Load and preprocess test data
-    testdata = SimpleCSVLoader("/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[" \
-                 "#090]8_0-1defect/test/_snr_100000.00_Inst_amplitude_090_1.csv")
-    testdata.load_and_preprocess()
-    segment_data1, original_size1 = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
-    del testdata
+    # Define the common prefix and the unique suffixes
+    prefix = "/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/"
+    suffixes = ["_snr_100000.00_Inst_amplitude_090_1.csv",
+                "_snr_100000.00_Inst_amplitude_090_2.csv",
+                # "_snr_100000.00_Inst_amplitude_090_3.csv",
+                "_snr_100000.00_Inst_amplitude_090_4.csv",
+                # "_snr_100000.00_Inst_amplitude_090_5.csv"
+                ]
+    # Generate the list of file paths
+    testdata_dirs = [prefix + suffix for suffix in suffixes]
 
     print("Load test data successfully.")
     # show_dataset_info(train_prefetcher, show_sample_slices=False)
@@ -151,39 +152,16 @@ def main():
                                                    criterion,
                                                    score_func,
                                                    "Val")
-            avg_test_loss, avg_test_score = test_epoch(test_model=convLSTM_model,
-                                                       segment_data=segment_data,
-                                                       original_size=original_size,
-                                                       criterion=criterion_test,
-                                                       score_func=score_func,
-                                                       writer=writer,
-                                                       epoch=epoch,
-                                                       mode="Test",
-                                                       label_dir=config.label_exp_dir)
-            avg_test_loss, avg_test_score = test_epoch(test_model=convLSTM_model,
-                                                       segment_data=segment_data1,
-                                                       original_size=original_size1,
-                                                       criterion=criterion_test,
-                                                       score_func=score_func,
-                                                       writer=writer,
-                                                       epoch=epoch,
-                                                       mode="Test",
-                                                       label_dir='/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/true_labels_090_1.csv')
-
             epoch_train_losses.append(avg_train_loss)
             epoch_train_scores.append(avg_train_score)
             epoch_val_losses.append(avg_val_loss)
             epoch_val_scores.append(avg_val_score)
-            epoch_test_losses.append(avg_test_loss)
-            epoch_test_scores.append(avg_test_score)
 
             metrics = {
                 "train_losses": epoch_train_losses,
                 "train_scores": epoch_train_scores,
                 "val_losses": epoch_val_losses,
                 "val_scores": epoch_val_scores,
-                "test_losses": epoch_test_losses,
-                "test_scores": epoch_test_scores
             }
 
             results_file = os.path.join(results_dir, f'training_metrics.json')
@@ -211,32 +189,38 @@ def main():
                             is_best=is_best,
                             is_last=is_last
                             )
+
+        test_epoch(test_model=convLSTM_model,
+                   testdata_dirs=testdata_dirs,
+                   label_dir=testdata_dirs)
+
         print(f"Completed training on fold {fold + 1}")
+
         break  # Break the loop after the first iteration
 
-    # ********************* test on experiments ********
-    # Parameters
-    # Remove the first 8 characters from config.results_dir
-    modified_results_dir = config.results_dir[8:]
-    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
-    # Process data
-    segment_output = process_data(convLSTM_model, segment_data, config.batch_size, config.device)
-    # Reassemble and save the data
-    reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size,
-                                        chunk_size=(17, 17, 256), step=config.step)
-    # Assuming original data was in (height, width, depth), revert the reassembled data to this order
-    reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
-    save_3d_array_to_csv(reassembled_data, save_path)
-    
-    segment_output = process_data(convLSTM_model, segment_data1, config.batch_size, config.device)
-    # Reassemble and save the data
-    reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size1,
-                                        chunk_size=(17, 17, 256), step=config.step)
-    # Assuming original data was in (height, width, depth), revert the reassembled data to this order
-    reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
-    save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_1_{modified_results_dir}.csv"
-    save_3d_array_to_csv(reassembled_data, save_path)
-    # **************************************************
+    # # ********************* test on experiments ********
+    # # Parameters
+    # # Remove the first 8 characters from config.results_dir
+    # modified_results_dir = config.results_dir[8:]
+    # save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_2_{modified_results_dir}.csv"
+    # # Process data
+    # segment_output = process_data(convLSTM_model, segment_data, config.batch_size, config.device)
+    # # Reassemble and save the data
+    # reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size,
+    #                                      chunk_size=(17, 17, 256), step=config.step)
+    # # Assuming original data was in (height, width, depth), revert the reassembled data to this order
+    # reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
+    # save_3d_array_to_csv(reassembled_data, save_path)
+    #
+    # segment_output = process_data(convLSTM_model, segment_data1, config.batch_size, config.device)
+    # # Reassemble and save the data
+    # reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size1,
+    #                                      chunk_size=(17, 17, 256), step=config.step)
+    # # Assuming original data was in (height, width, depth), revert the reassembled data to this order
+    # reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
+    # save_path = f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_[#090]8_0-1defect/test/Inst_amplitude_090_1_{modified_results_dir}.csv"
+    # save_3d_array_to_csv(reassembled_data, save_path)
+    # # **************************************************
 
 
 def load_dataset(num_folds=5) -> list:
@@ -251,7 +235,7 @@ def load_dataset(num_folds=5) -> list:
     indices = torch.randperm(dataset_size).tolist()
     # Print the first 10 numbers of the indices
     print("First 10 indices:", indices[:10])
-    
+
     # Calculate the size of each fold
     fold_size = dataset_size // num_folds
     dataloaders_per_fold = []
@@ -271,7 +255,7 @@ def load_dataset(num_folds=5) -> list:
                                   persistent_workers=True)
         val_loader = DataLoader(val_subset, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers,
                                 pin_memory=True, drop_last=True, persistent_workers=True)
-        print("Created DataLoaders")                         
+        print("Created DataLoaders")
         # Now you can check if 'device' is set to "cpu"
         if config.device == torch.device("cpu"):
             train_prefetcher = CPUPrefetcher(train_loader)
@@ -431,80 +415,45 @@ def validate(
 
 
 def test_epoch(
-        test_model: nn.Module,
-        segment_data,
-        original_size,
-        criterion: any,
-        score_func: any,
-        writer: SummaryWriter,
-        epoch: int,    
-        label_dir: str, 
-        mode: str = 'Test',
-) -> (float, float):
-    batch_time = AverageMeter("Time", ":6.3f")
-    losses = AverageMeter("Loss", ":6.6f")
-    scores = AverageMeter("Score", ":6.6f")
-    progress = ProgressMeter(1, [batch_time, losses, scores], prefix=f"{mode}: ")
+        test_model: torch.nn.Module,
+        testdata_dirs: list,
+        label_dir=config.label_exp_dir,
+) -> None:
+    for epoch, csv_file_path in enumerate(testdata_dirs, start=1):
+        batch_time = AverageMeter("Time", ":6.3f")
+        test_model.eval()
+        # Initialize and load the test data using SimpleCSVLoader
+        testdata = SimpleCSVLoader(csv_file_path)
+        testdata.load_and_preprocess()
+        segment_data, original_size = testdata.segment_dataset(chunk_size=(17, 17), step=config.step)
+        del testdata
+        with torch.no_grad():
+            # Process data
+            segment_output = process_data(test_model, segment_data, config.batch_size, config.device)
+            # Read the label data
+            label = read_csv_to_3d_array(label_dir)
+            # Reassemble and save the data
+            reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size,
+                                                 chunk_size=(17, 17, 256), step=config.step)
+            # Assuming original data was in (height, width, depth), revert the reassembled data to this order
+            reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
+            reassembled_data = np.round(reassembled_data, 2)
+            # Release the torch.tensor space
+            reassembled_data_2d = np.max(reassembled_data, axis=2)
+            label_2d = label.detach().cpu()
+            del reassembled_data
+            del label
+            # Compute Precision-Recall curve and F1 score
+            precision, recall, thresholds, f1_scores, average_precision = calculate_precision_recall(
+                reassembled_data_2d.flatten(),
+                label_2d.flatten(),
+                n_interp_points=100
+            )
+            end = time.time()
+            batch_time.update(time.time() - end)
 
-    test_model.eval()
-    end = time.time()
-
-    # # --------------- Initialize and load the
-    # fold_number = 1
-    # test_model = model_unet3d.__dict__[config.d_arch_name](in_channels=config.input_dim, num_classes=config.output_dim)
-    # test_model = test_model.to(device=config.device)
-    # model_path = os.path.join(config.results_dir, f"_fold {fold_number}", "d_best.pth.tar")
-    # test_model = load_checkpoint(test_model, model_path)
-    # # _-----------------------
-
-    with torch.no_grad():
-        # Process data
-        segment_output = process_data(test_model, segment_data, config.batch_size, config.device)
-        # Read the label data
-        label = read_csv_to_3d_array(label_dir)
-        # Convert label to tensor
-        # label_tensor_2d = torch.tensor(label.max(axis=2), dtype=torch.float32).to(config.device)
-        label_tensor_2d = torch.tensor(label, dtype=torch.float32).to(config.device)
-
-        # Reassemble and save the data
-        reassembled_data = reassemble_chunks(chunks=segment_output, original_size=original_size,
-                                             chunk_size=(17, 17, 256), step=config.step)
-        # Assuming original data was in (height, width, depth), revert the reassembled data to this order
-        reassembled_data = np.transpose(reassembled_data, (1, 2, 0))
-
-        # save_3d_array_to_csv(reassembled_data, f"/mnt/raid5/xiaoyu/Ultrasound_data/dataset_woven_["
-                            # f"#090]8_0-1defect/test/exp_test_results_epoch_{epoch}.csv")
-        # reassembled_data_tensor_2d = torch.tensor(reassembled_data.max(axis=2), dtype=torch.float32).to(config.device)
-        reassembled_data = np.round(reassembled_data, 2)
-        reassembled_data_tensor_2d = torch.tensor(reassembled_data, dtype=torch.float32).to(config.device)
-
-        with amp.autocast():
-            loss = criterion(reassembled_data_tensor_2d, label_tensor_2d)
-            score = score_func(reassembled_data_tensor_2d, label_tensor_2d)
-
-        # Release the torch.tensor space
-        reassembled_data_tensor_2d = reassembled_data_tensor_2d.detach().cpu()
-        label_tensor_2d = label_tensor_2d.detach().cpu()
-        del reassembled_data_tensor_2d
-        del label_tensor_2d
-        
-        # Compute ROC AUC
-        _, _, roc_auc = compute_roc_auc(reassembled_data, label)
-        print(f"ROC AUC: {roc_auc:.2f}")
-        
-        losses.update(loss.item(), 1)
-        scores.update(score.item(), 1)
-
-        batch_time.update(time.time() - end)
-        time.time()
-
-        writer.add_scalar(f"{mode}/Loss", loss.item(), epoch + 1)
-        writer.add_scalar(f"{mode}/Score", score.item(), epoch + 1)
-
-    progress.display_summary()
-    avg_loss = losses.avg
-    avg_score = scores.avg
-    return avg_loss, avg_score
+            print(f"Processed {csv_file_path}: average Precision = {average_precision}, Batch Time = {batch_time.avg}, "
+                  f"Epoch = {epoch}")
 
 
 def initialize_weights(model):
@@ -516,6 +465,7 @@ def initialize_weights(model):
         elif isinstance(m, nn.BatchNorm3d):
             torch.nn.init.constant_(m.weight, 1)
             torch.nn.init.constant_(m.bias, 0)
+
 
 # Function to release GPU resources
 def cleanup():

@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torch.optim.swa_utils import AveragedModel
+import model_unet3d
 
 import dataset
 from dataset import imgproc
@@ -20,7 +21,7 @@ import re
 
 
 def load_checkpoint(checkpoint_path, model, ema_model=None, optimizer=None, scheduler=None):
-    checkpoint = torch.load(checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, map_location=config.device)
     model.load_state_dict(checkpoint["state_dict"])
     if ema_model:
         ema_model.load_state_dict(checkpoint["ema_state_dict"])
@@ -188,6 +189,7 @@ def process_ultrasound_data(fold_number=1,
 
         # Load the EMA model
         checkpoint_path = os.path.join(config.results_dir, f"_fold {fold_number}", model_filename)
+        print(checkpoint_path)
         convLSTMmodel, ema_model, _ = load_checkpoint(checkpoint_path, convLSTMmodel, ema_model)
         # Process data
         segment_output = process_data(ema_model, segment_data, config.batch_size, config.device)
